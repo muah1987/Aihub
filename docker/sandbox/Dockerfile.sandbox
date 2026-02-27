@@ -1,0 +1,23 @@
+FROM alpine:3.21
+
+RUN apk add --no-cache \
+    bash \
+    git \
+    curl \
+    wget \
+    vim \
+    make \
+    gcc \
+    musl-dev \
+    python3 \
+    py3-pip \
+    nodejs \
+    npm \
+    openssh-client
+
+# Create non-root user
+RUN adduser -D -s /bin/bash sandbox
+USER sandbox
+WORKDIR /workspace
+
+CMD ["/bin/bash"]

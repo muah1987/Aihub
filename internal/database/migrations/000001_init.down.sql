@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS terminal_sessions;
+DROP TABLE IF EXISTS agents;
+DROP TABLE IF EXISTS messages;
+DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS provider_connections;
+DROP TABLE IF EXISTS users;

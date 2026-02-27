@@ -1,0 +1,44 @@
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+bin/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / React
+web/node_modules/
+web/dist/
+web/.vite/
+
+# Docker
+.docker/
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite
+
+# Compiled
+tmp/
