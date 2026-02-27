@@ -13,6 +13,7 @@ import (
 
 	"github.com/muah1987/Aihub/internal/activity"
 	"github.com/muah1987/Aihub/internal/agent"
+	"github.com/muah1987/Aihub/internal/integration"
 	"github.com/muah1987/Aihub/internal/knowledge"
 	"github.com/muah1987/Aihub/internal/analytics"
 	"github.com/muah1987/Aihub/internal/auth"
@@ -125,6 +126,9 @@ func main() {
 	// Phase 7
 	knowledgeService := knowledge.NewService(db)
 
+	// Phase 8
+	integrationService := integration.NewService(db)
+
 	// Handlers
 	handlers := &router.Handlers{
 		Auth:         auth.NewHandler(authService),
@@ -145,6 +149,7 @@ func main() {
 		Scheduler:    scheduler.NewHandler(schedulerService),
 		Activity:     activity.NewHandler(activityService),
 		Knowledge:    knowledge.NewHandler(knowledgeService),
+		Integration:  integration.NewHandler(integrationService),
 	}
 
 	if terminalService != nil {

@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/muah1987/Aihub/internal/activity"
 	"github.com/muah1987/Aihub/internal/agent"
+	"github.com/muah1987/Aihub/internal/integration"
 	"github.com/muah1987/Aihub/internal/knowledge"
 	"github.com/muah1987/Aihub/internal/analytics"
 	"github.com/muah1987/Aihub/internal/auth"
@@ -46,6 +47,7 @@ type Handlers struct {
 	Scheduler    *scheduler.Handler
 	Activity     *activity.Handler
 	Knowledge    *knowledge.Handler
+	Integration  *integration.Handler
 }
 
 func New(
@@ -106,6 +108,22 @@ func New(
 					r.Post("/read-all", handlers.Notification.MarkAllRead)
 					r.Post("/{id}/read", handlers.Notification.MarkRead)
 					r.Delete("/{id}", handlers.Notification.Delete)
+				})
+			}
+
+			// Notification rules & email digests (Phase 8)
+			if handlers.Integration != nil {
+				r.Route("/notification-rules", func(r chi.Router) {
+					r.Get("/", handlers.Integration.ListRules)
+					r.Post("/", handlers.Integration.CreateRule)
+					r.Put("/{ruleId}", handlers.Integration.UpdateRule)
+					r.Delete("/{ruleId}", handlers.Integration.DeleteRule)
+				})
+				r.Route("/email-digests", func(r chi.Router) {
+					r.Get("/", handlers.Integration.ListDigests)
+					r.Post("/", handlers.Integration.UpsertDigest)
+					r.Get("/current", handlers.Integration.GetDigest)
+					r.Delete("/{digestId}", handlers.Integration.DeleteDigest)
 				})
 			}
 
@@ -314,6 +332,20 @@ func New(
 					// Activity log
 					if handlers.Activity != nil {
 						r.Get("/activity", handlers.Activity.List)
+					}
+
+					// Integrations (Phase 8)
+					if handlers.Integration != nil {
+						r.Route("/integrations", func(r chi.Router) {
+							r.Get("/", handlers.Integration.ListConnections)
+							r.Post("/", handlers.Integration.CreateConnection)
+							r.Get("/events", handlers.Integration.ListOutboundEvents)
+							r.Route("/{connId}", func(r chi.Router) {
+								r.Put("/", handlers.Integration.UpdateConnection)
+								r.Delete("/", handlers.Integration.DeleteConnection)
+								r.Post("/test", handlers.Integration.TestConnection)
+							})
+						})
 					}
 
 					// Knowledge management (Phase 7)
