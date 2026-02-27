@@ -3,6 +3,7 @@ package middleware
 import (
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -43,12 +44,33 @@ func NewRateLimiter(ratePerSecond, burst float64) *RateLimiter {
 	return rl
 }
 
+// clientIP extracts the real client IP from the request.
+// It trusts X-Real-IP and X-Forwarded-For headers, so this function should
+// only be used when the application is deployed behind a reverse proxy (e.g.
+// Nginx) that strips or overwrites these headers from untrusted clients before
+// forwarding requests. Without such a proxy, clients can spoof their IP and
+// bypass rate limiting.
+func clientIP(r *http.Request) string {
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		if parsed := net.ParseIP(strings.TrimSpace(ip)); parsed != nil {
+			return parsed.String()
+		}
+	}
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		first := strings.TrimSpace(strings.SplitN(forwarded, ",", 2)[0])
+		if parsed := net.ParseIP(first); parsed != nil {
+			return parsed.String()
+		}
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
 func (rl *RateLimiter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := r.RemoteAddr
-		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-			ip = host
-		}
+		ip := clientIP(r)
 
 		rl.mu.Lock()
 		v, exists := rl.visitors[ip]
