@@ -6,6 +6,9 @@ import { TerminalView } from '../terminal/Terminal';
 import { AgentPanel } from '../agent/AgentPanel';
 import { MemoryPanel } from '../memory/MemoryPanel';
 import { TeamPanel } from '../team/TeamPanel';
+import { ProjectSettings } from './ProjectSettings';
+import { DevOpsPanel } from '../devops/DevOpsPanel';
+import { LogsPanel } from '../log-viewer/LogsPanel';
 import { ArrowLeft } from 'lucide-react';
 
 interface ProjectDashboardProps {
@@ -29,23 +32,11 @@ export function ProjectDashboard({ project, onBack }: ProjectDashboardProps) {
       case 'memory':
         return <MemoryPanel projectId={project.id} />;
       case 'devops':
-        return (
-          <div className="flex items-center justify-center h-full text-[var(--color-text-secondary)]">
-            DevOps Space - Coming in Phase 3
-          </div>
-        );
+        return <DevOpsPanel projectId={project.id} />;
       case 'logs':
-        return (
-          <div className="flex items-center justify-center h-full text-[var(--color-text-secondary)]">
-            Logs - Coming in Phase 3
-          </div>
-        );
+        return <LogsPanel projectId={project.id} />;
       case 'settings':
-        return (
-          <div className="flex items-center justify-center h-full text-[var(--color-text-secondary)]">
-            Project Settings - Coming Soon
-          </div>
-        );
+        return <ProjectSettings projectId={project.id} />;
       default:
         return null;
     }
@@ -67,12 +58,12 @@ export function ProjectDashboard({ project, onBack }: ProjectDashboardProps) {
         </div>
 
         {/* Desktop tab bar */}
-        <div className="hidden sm:flex border-b border-[var(--color-border)] px-4">
+        <div className="hidden sm:flex border-b border-[var(--color-border)] px-4 overflow-x-auto">
           {['chat', 'cli', 'agents', 'teams', 'memory', 'devops', 'logs', 'settings'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm capitalize border-b-2 transition-colors ${
+              className={`px-4 py-2 text-sm capitalize border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab
                   ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
                   : 'border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text)]'

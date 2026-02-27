@@ -16,6 +16,7 @@ import (
 	"github.com/muah1987/Aihub/internal/chat"
 	"github.com/muah1987/Aihub/internal/config"
 	"github.com/muah1987/Aihub/internal/database"
+	"github.com/muah1987/Aihub/internal/deployment"
 	"github.com/muah1987/Aihub/internal/email"
 	"github.com/muah1987/Aihub/internal/memory"
 	"github.com/muah1987/Aihub/internal/organization"
@@ -48,8 +49,7 @@ func main() {
 	}
 
 	// Initialize email service
-	var emailService *email.Service
-	emailService = email.NewService(&email.Config{
+	emailService := email.NewService(&email.Config{
 		Host:     cfg.SMTP.Host,
 		Port:     cfg.SMTP.Port,
 		Username: cfg.SMTP.Username,
@@ -96,11 +96,15 @@ func main() {
 	memoryService := memory.NewService(db)
 	rbacService := rbac.NewService(db)
 	orgService := organization.NewService(db, emailService)
-
 	agentService := agent.NewService(db, providerService, chatService, memoryService)
-
 	teamService := team.NewService(db)
 	orchestrator := team.NewOrchestrator(db, agentService, chatService, memoryService, providerService)
+
+	// Phase 3 services
+	deploymentService, err := deployment.NewService(db, cfg.Encryption.Key)
+	if err != nil {
+		log.Fatalf("Failed to initialize deployment service: %v", err)
+	}
 
 	// Initialize handlers
 	handlers := &router.Handlers{
@@ -112,6 +116,7 @@ func main() {
 		Organization: organization.NewHandler(orgService, rbacService),
 		Memory:       memory.NewHandler(memoryService),
 		Team:         team.NewHandler(teamService, orchestrator),
+		Deployment:   deployment.NewHandler(deploymentService),
 	}
 
 	if terminalService != nil {

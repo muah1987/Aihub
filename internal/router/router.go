@@ -7,6 +7,7 @@ import (
 	"github.com/muah1987/Aihub/internal/agent"
 	"github.com/muah1987/Aihub/internal/auth"
 	"github.com/muah1987/Aihub/internal/chat"
+	"github.com/muah1987/Aihub/internal/deployment"
 	"github.com/muah1987/Aihub/internal/memory"
 	"github.com/muah1987/Aihub/internal/middleware"
 	"github.com/muah1987/Aihub/internal/organization"
@@ -26,6 +27,7 @@ type Handlers struct {
 	Organization *organization.Handler
 	Memory       *memory.Handler
 	Team         *team.Handler
+	Deployment   *deployment.Handler
 }
 
 func New(
@@ -160,6 +162,29 @@ func New(
 								r.Get("/tasks/{taskId}", handlers.Team.GetTask)
 							})
 						})
+					}
+
+					// Deployment (env vars + VPS targets + runs)
+					if handlers.Deployment != nil {
+						r.Route("/env", func(r chi.Router) {
+							r.Get("/", handlers.Deployment.ListEnvVars)
+							r.Post("/", handlers.Deployment.SetEnvVar)
+							r.Delete("/{envId}", handlers.Deployment.DeleteEnvVar)
+						})
+
+						r.Route("/deploy", func(r chi.Router) {
+							r.Get("/", handlers.Deployment.ListTargets)
+							r.Post("/", handlers.Deployment.CreateTarget)
+							r.Get("/runs", handlers.Deployment.ListRuns)
+							r.Route("/{targetId}", func(r chi.Router) {
+								r.Put("/", handlers.Deployment.UpdateTarget)
+								r.Delete("/", handlers.Deployment.DeleteTarget)
+								r.Post("/trigger", handlers.Deployment.Deploy)
+								r.Get("/runs", handlers.Deployment.ListRuns)
+							})
+						})
+
+						r.Get("/runs/{runId}", handlers.Deployment.GetRun)
 					}
 				})
 			})
