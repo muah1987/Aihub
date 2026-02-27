@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/muah1987/Aihub/internal/activity"
 	"github.com/muah1987/Aihub/internal/agent"
 	"github.com/muah1987/Aihub/internal/analytics"
 	"github.com/muah1987/Aihub/internal/auth"
@@ -27,10 +28,12 @@ import (
 	"github.com/muah1987/Aihub/internal/provider"
 	"github.com/muah1987/Aihub/internal/rbac"
 	"github.com/muah1987/Aihub/internal/router"
+	"github.com/muah1987/Aihub/internal/scheduler"
 	"github.com/muah1987/Aihub/internal/team"
 	"github.com/muah1987/Aihub/internal/terminal"
 	"github.com/muah1987/Aihub/internal/tools"
 	"github.com/muah1987/Aihub/internal/webhook"
+	"github.com/muah1987/Aihub/internal/workflow"
 )
 
 func main() {
@@ -113,6 +116,11 @@ func main() {
 	agentService.SetUsageRecorder(analyticsService)
 	agentService.SetToolProvider(toolsService)
 
+	// Phase 6
+	workflowService := workflow.NewService(db)
+	schedulerService := scheduler.NewService(db)
+	activityService := activity.NewService(db)
+
 	// Handlers
 	handlers := &router.Handlers{
 		Auth:         auth.NewHandler(authService),
@@ -129,6 +137,9 @@ func main() {
 		Notification: notification.NewHandler(notifyService, notifyHub),
 		Tools:        tools.NewHandler(toolsService),
 		Analytics:    analytics.NewHandler(analyticsService),
+		Workflow:     workflow.NewHandler(workflowService),
+		Scheduler:    scheduler.NewHandler(schedulerService),
+		Activity:     activity.NewHandler(activityService),
 	}
 
 	if terminalService != nil {

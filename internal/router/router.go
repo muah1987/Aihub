@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/muah1987/Aihub/internal/activity"
 	"github.com/muah1987/Aihub/internal/agent"
 	"github.com/muah1987/Aihub/internal/analytics"
 	"github.com/muah1987/Aihub/internal/auth"
@@ -16,10 +17,12 @@ import (
 	"github.com/muah1987/Aihub/internal/organization"
 	"github.com/muah1987/Aihub/internal/project"
 	"github.com/muah1987/Aihub/internal/provider"
+	"github.com/muah1987/Aihub/internal/scheduler"
 	"github.com/muah1987/Aihub/internal/team"
 	"github.com/muah1987/Aihub/internal/terminal"
 	"github.com/muah1987/Aihub/internal/tools"
 	"github.com/muah1987/Aihub/internal/webhook"
+	"github.com/muah1987/Aihub/internal/workflow"
 )
 
 type Handlers struct {
@@ -38,6 +41,9 @@ type Handlers struct {
 	Notification *notification.Handler
 	Tools        *tools.Handler
 	Analytics    *analytics.Handler
+	Workflow     *workflow.Handler
+	Scheduler    *scheduler.Handler
+	Activity     *activity.Handler
 }
 
 func New(
@@ -262,6 +268,44 @@ func New(
 							r.Put("/{webhookId}/active", handlers.Webhook.SetActive)
 							r.Get("/{webhookId}/secret", handlers.Webhook.GetSecret)
 						})
+					}
+
+					// Workflows
+					if handlers.Workflow != nil {
+						r.Route("/workflows", func(r chi.Router) {
+							r.Get("/", handlers.Workflow.List)
+							r.Post("/", handlers.Workflow.Create)
+							r.Route("/{workflowId}", func(r chi.Router) {
+								r.Get("/", handlers.Workflow.Get)
+								r.Put("/", handlers.Workflow.Update)
+								r.Delete("/", handlers.Workflow.Delete)
+								r.Put("/enabled", handlers.Workflow.SetEnabled)
+								r.Post("/trigger", handlers.Workflow.Trigger)
+								r.Get("/runs", handlers.Workflow.ListRuns)
+								r.Get("/runs/{runId}", handlers.Workflow.GetRun)
+								r.Post("/steps", handlers.Workflow.AddStep)
+								r.Delete("/steps/{stepId}", handlers.Workflow.DeleteStep)
+							})
+						})
+					}
+
+					// Scheduled jobs
+					if handlers.Scheduler != nil {
+						r.Route("/schedules", func(r chi.Router) {
+							r.Get("/", handlers.Scheduler.List)
+							r.Post("/", handlers.Scheduler.Create)
+							r.Route("/{jobId}", func(r chi.Router) {
+								r.Put("/", handlers.Scheduler.Update)
+								r.Delete("/", handlers.Scheduler.Delete)
+								r.Put("/enabled", handlers.Scheduler.SetEnabled)
+								r.Get("/runs", handlers.Scheduler.ListRuns)
+							})
+						})
+					}
+
+					// Activity log
+					if handlers.Activity != nil {
+						r.Get("/activity", handlers.Activity.List)
 					}
 				})
 			})
