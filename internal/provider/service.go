@@ -33,10 +33,11 @@ type Service struct {
 
 func NewService(db *gorm.DB, encryptionKeyHex string) (*Service, error) {
 	key, err := hex.DecodeString(encryptionKeyHex)
-	if err != nil || len(key) != 32 {
-		// Fallback: use the string directly padded/truncated to 32 bytes
-		key = make([]byte, 32)
-		copy(key, []byte(encryptionKeyHex))
+	if err != nil {
+		return nil, fmt.Errorf("invalid encryption key: must be a hex-encoded string: %w", err)
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("invalid encryption key: decoded length must be 32 bytes, got %d", len(key))
 	}
 
 	return &Service{

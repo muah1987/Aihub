@@ -273,24 +273,35 @@ func (s *Service) Setup2FA(userID uuid.UUID) (secret, qrURL string, backupCodes 
 	qrURL = s.totp.GenerateQRURL(user.Email, secret)
 
 	// Store the secret temporarily (not enabled yet until confirmed)
-	s.db.Model(&user).Update("two_factor_secret", secret)
+	if err := s.db.Model(&user).Update("two_factor_secret", secret).Error; err != nil {
+		return "", "", nil, fmt.Errorf("failed to save 2FA secret: %w", err)
+	}
 
 	// Generate backup codes
 	backupCodes = make([]string, 10)
 	for i := range backupCodes {
 		codeBytes := make([]byte, 4)
-		rand.Read(codeBytes)
+		if _, err := rand.Read(codeBytes); err != nil {
+			return "", "", nil, fmt.Errorf("failed to generate backup code: %w", err)
+		}
 		backupCodes[i] = hex.EncodeToString(codeBytes)
 	}
 
 	// Delete old backup codes and store new ones
-	s.db.Where("user_id = ?", userID).Delete(&models.TwoFactorBackupCode{})
+	if err := s.db.Where("user_id = ?", userID).Delete(&models.TwoFactorBackupCode{}).Error; err != nil {
+		return "", "", nil, fmt.Errorf("failed to delete old backup codes: %w", err)
+	}
 	for _, code := range backupCodes {
-		hash, _ := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
-		s.db.Create(&models.TwoFactorBackupCode{
+		hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+		if err != nil {
+			return "", "", nil, fmt.Errorf("failed to hash backup code: %w", err)
+		}
+		if err := s.db.Create(&models.TwoFactorBackupCode{
 			UserID:   userID,
 			CodeHash: string(hash),
-		})
+		}).Error; err != nil {
+			return "", "", nil, fmt.Errorf("failed to save backup code: %w", err)
+		}
 	}
 
 	return secret, qrURL, backupCodes, nil
