@@ -13,6 +13,7 @@ import (
 
 	"github.com/muah1987/Aihub/internal/activity"
 	"github.com/muah1987/Aihub/internal/agent"
+	"github.com/muah1987/Aihub/internal/knowledge"
 	"github.com/muah1987/Aihub/internal/analytics"
 	"github.com/muah1987/Aihub/internal/auth"
 	"github.com/muah1987/Aihub/internal/chat"
@@ -121,6 +122,9 @@ func main() {
 	schedulerService := scheduler.NewService(db)
 	activityService := activity.NewService(db)
 
+	// Phase 7
+	knowledgeService := knowledge.NewService(db)
+
 	// Handlers
 	handlers := &router.Handlers{
 		Auth:         auth.NewHandler(authService),
@@ -140,6 +144,7 @@ func main() {
 		Workflow:     workflow.NewHandler(workflowService),
 		Scheduler:    scheduler.NewHandler(schedulerService),
 		Activity:     activity.NewHandler(activityService),
+		Knowledge:    knowledge.NewHandler(knowledgeService),
 	}
 
 	if terminalService != nil {

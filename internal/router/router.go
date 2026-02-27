@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/muah1987/Aihub/internal/activity"
 	"github.com/muah1987/Aihub/internal/agent"
+	"github.com/muah1987/Aihub/internal/knowledge"
 	"github.com/muah1987/Aihub/internal/analytics"
 	"github.com/muah1987/Aihub/internal/auth"
 	"github.com/muah1987/Aihub/internal/chat"
@@ -44,6 +45,7 @@ type Handlers struct {
 	Workflow     *workflow.Handler
 	Scheduler    *scheduler.Handler
 	Activity     *activity.Handler
+	Knowledge    *knowledge.Handler
 }
 
 func New(
@@ -128,6 +130,12 @@ func New(
 						r.Post("/invite", handlers.Organization.InviteMember)
 						r.Delete("/members/{userId}", handlers.Organization.RemoveMember)
 						r.Put("/members/{userId}/role", handlers.Organization.UpdateMemberRole)
+
+						// Shared memories (Phase 7)
+						if handlers.Knowledge != nil {
+							r.Get("/shared-memories", handlers.Knowledge.ListSharedMemories)
+							r.Delete("/shared-memories/{sharedId}", handlers.Knowledge.UnshareMemory)
+						}
 					})
 				})
 				r.Post("/invitations/{token}/accept", handlers.Organization.AcceptInvitation)
@@ -306,6 +314,41 @@ func New(
 					// Activity log
 					if handlers.Activity != nil {
 						r.Get("/activity", handlers.Activity.List)
+					}
+
+					// Knowledge management (Phase 7)
+					if handlers.Knowledge != nil {
+						r.Route("/knowledge", func(r chi.Router) {
+							// Documents
+							r.Route("/documents", func(r chi.Router) {
+								r.Get("/", handlers.Knowledge.ListDocuments)
+								r.Post("/", handlers.Knowledge.CreateDocument)
+								r.Get("/search", handlers.Knowledge.SearchChunks)
+								r.Route("/{docId}", func(r chi.Router) {
+									r.Get("/", handlers.Knowledge.GetDocument)
+									r.Delete("/", handlers.Knowledge.DeleteDocument)
+									r.Get("/chunks", handlers.Knowledge.GetChunks)
+								})
+							})
+
+							// Memory versioning
+							r.Route("/versions/{memoryId}", func(r chi.Router) {
+								r.Get("/", handlers.Knowledge.ListVersions)
+								r.Get("/{versionNumber}", handlers.Knowledge.GetVersion)
+								r.Post("/rollback", handlers.Knowledge.RollbackMemory)
+							})
+
+							// Shared memories
+							r.Post("/share", handlers.Knowledge.ShareMemory)
+							r.Get("/shared", handlers.Knowledge.GetSharedForProject)
+
+							// Auto-extractions
+							r.Route("/extractions", func(r chi.Router) {
+								r.Get("/", handlers.Knowledge.ListExtractions)
+								r.Post("/{extractionId}/accept", handlers.Knowledge.AcceptExtraction)
+								r.Post("/{extractionId}/reject", handlers.Knowledge.RejectExtraction)
+							})
+						})
 					}
 				})
 			})

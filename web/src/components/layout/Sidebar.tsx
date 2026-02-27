@@ -1,4 +1,4 @@
-import { MessageSquare, Terminal, Bot, Wrench, FileText, Settings, Brain, Users, Puzzle, BarChart3, GitBranch, Clock, Activity } from 'lucide-react';
+import { MessageSquare, Terminal, Bot, Wrench, FileText, Settings, Brain, Users, Puzzle, BarChart3, GitBranch, Clock, Activity, BookOpen } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
@@ -16,6 +16,7 @@ const tabs = [
   { id: 'workflows', label: 'Workflows', icon: GitBranch },
   { id: 'schedules', label: 'Schedules', icon: Clock },
   { id: 'activity', label: 'Activity', icon: Activity },
+  { id: 'knowledge', label: 'Knowledge', icon: BookOpen },
   { id: 'devops', label: 'DevOps', icon: Wrench },
   { id: 'logs', label: 'Logs', icon: FileText },
   { id: 'settings', label: 'Settings', icon: Settings },
