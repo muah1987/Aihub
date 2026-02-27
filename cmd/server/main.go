@@ -19,6 +19,8 @@ import (
 	"github.com/muah1987/Aihub/internal/deployment"
 	"github.com/muah1987/Aihub/internal/email"
 	"github.com/muah1987/Aihub/internal/memory"
+	"github.com/muah1987/Aihub/internal/monitoring"
+	"github.com/muah1987/Aihub/internal/notification"
 	"github.com/muah1987/Aihub/internal/organization"
 	"github.com/muah1987/Aihub/internal/project"
 	"github.com/muah1987/Aihub/internal/provider"
@@ -26,29 +28,26 @@ import (
 	"github.com/muah1987/Aihub/internal/router"
 	"github.com/muah1987/Aihub/internal/team"
 	"github.com/muah1987/Aihub/internal/terminal"
+	"github.com/muah1987/Aihub/internal/webhook"
 )
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Println("Starting Aihub server...")
 
-	// Load configuration
 	cfg := config.Load()
 	log.Printf("Environment: %s", cfg.Server.Environment)
 
-	// Connect to database
 	db, err := database.Connect(&cfg.Database)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	log.Println("Connected to database")
 
-	// Run migrations
 	if err := database.RunMigrations(db); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	// Initialize email service
 	emailService := email.NewService(&email.Config{
 		Host:     cfg.SMTP.Host,
 		Port:     cfg.SMTP.Port,
@@ -58,7 +57,6 @@ func main() {
 		BaseURL:  cfg.SMTP.BaseURL,
 	})
 
-	// Initialize services
 	jwtService := auth.NewJWTService(&cfg.JWT)
 	authService := auth.NewService(db, jwtService, emailService)
 
@@ -73,17 +71,12 @@ func main() {
 	go chatHub.Run()
 	chatService := chat.NewService(db, chatHub)
 
-	// Initialize terminal container manager
 	cpuLimit, _ := strconv.ParseFloat(cfg.Docker.CPULimit, 64)
 	containerMgr, err := terminal.NewContainerManager(
-		cfg.Docker.Host,
-		cfg.Docker.SandboxImage,
-		cfg.Docker.MemoryLimit,
-		cpuLimit,
+		cfg.Docker.Host, cfg.Docker.SandboxImage, cfg.Docker.MemoryLimit, cpuLimit,
 	)
 	if err != nil {
-		log.Printf("Warning: Docker container manager failed to initialize: %v", err)
-		log.Println("Terminal features will be unavailable")
+		log.Printf("Warning: Docker unavailable: %v — terminal features disabled", err)
 		containerMgr = nil
 	}
 
@@ -92,7 +85,7 @@ func main() {
 		terminalService = terminal.NewService(db, containerMgr)
 	}
 
-	// Phase 2 services
+	// Phase 2
 	memoryService := memory.NewService(db)
 	rbacService := rbac.NewService(db)
 	orgService := organization.NewService(db, emailService)
@@ -100,13 +93,19 @@ func main() {
 	teamService := team.NewService(db)
 	orchestrator := team.NewOrchestrator(db, agentService, chatService, memoryService, providerService)
 
-	// Phase 3 services
+	// Phase 3
 	deploymentService, err := deployment.NewService(db, cfg.Encryption.Key)
 	if err != nil {
 		log.Fatalf("Failed to initialize deployment service: %v", err)
 	}
 
-	// Initialize handlers
+	// Phase 4
+	notifyHub := notification.NewHub()
+	notifyService := notification.NewService(db, notifyHub)
+	webhookService := webhook.NewService(db)
+	monitoringService := monitoring.NewService(db, deploymentService)
+
+	// Handlers
 	handlers := &router.Handlers{
 		Auth:         auth.NewHandler(authService),
 		Provider:     provider.NewHandler(providerService),
@@ -117,16 +116,17 @@ func main() {
 		Memory:       memory.NewHandler(memoryService),
 		Team:         team.NewHandler(teamService, orchestrator),
 		Deployment:   deployment.NewHandler(deploymentService),
+		Webhook:      webhook.NewHandler(webhookService, deploymentService, notifyService),
+		Monitoring:   monitoring.NewHandler(monitoringService),
+		Notification: notification.NewHandler(notifyService, notifyHub),
 	}
 
 	if terminalService != nil {
 		handlers.Terminal = terminal.NewHandler(terminalService)
 	}
 
-	// Create router
 	handler := router.New(handlers, jwtService, cfg.CORS.AllowedOrigins)
 
-	// Start server
 	addr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
 		Addr:         addr,
@@ -136,21 +136,16 @@ func main() {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	// Graceful shutdown
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
-
 		log.Println("Shutting down server...")
-
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-
 		if containerMgr != nil {
 			containerMgr.Close()
 		}
-
 		if err := srv.Shutdown(ctx); err != nil {
 			log.Fatalf("Server shutdown failed: %v", err)
 		}
@@ -160,6 +155,5 @@ func main() {
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("Server failed: %v", err)
 	}
-
 	log.Println("Server stopped")
 }

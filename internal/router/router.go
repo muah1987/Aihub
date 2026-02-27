@@ -10,11 +10,14 @@ import (
 	"github.com/muah1987/Aihub/internal/deployment"
 	"github.com/muah1987/Aihub/internal/memory"
 	"github.com/muah1987/Aihub/internal/middleware"
+	"github.com/muah1987/Aihub/internal/monitoring"
+	"github.com/muah1987/Aihub/internal/notification"
 	"github.com/muah1987/Aihub/internal/organization"
 	"github.com/muah1987/Aihub/internal/project"
 	"github.com/muah1987/Aihub/internal/provider"
 	"github.com/muah1987/Aihub/internal/team"
 	"github.com/muah1987/Aihub/internal/terminal"
+	"github.com/muah1987/Aihub/internal/webhook"
 )
 
 type Handlers struct {
@@ -28,6 +31,9 @@ type Handlers struct {
 	Memory       *memory.Handler
 	Team         *team.Handler
 	Deployment   *deployment.Handler
+	Webhook      *webhook.Handler
+	Monitoring   *monitoring.Handler
+	Notification *notification.Handler
 }
 
 func New(
@@ -49,6 +55,11 @@ func New(
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
 	})
+
+	// Public GitHub webhook ingress (no auth, HMAC-verified)
+	if handlers.Webhook != nil {
+		r.Post("/webhooks/github/{webhookId}", handlers.Webhook.GitHubIncoming)
+	}
 
 	// API v1
 	r.Route("/api/v1", func(r chi.Router) {
@@ -75,6 +86,16 @@ func New(
 		// Protected routes
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(jwtService))
+
+			// Notifications
+			if handlers.Notification != nil {
+				r.Route("/notifications", func(r chi.Router) {
+					r.Get("/", handlers.Notification.List)
+					r.Post("/read-all", handlers.Notification.MarkAllRead)
+					r.Post("/{id}/read", handlers.Notification.MarkRead)
+					r.Delete("/{id}", handlers.Notification.Delete)
+				})
+			}
 
 			// Provider connections
 			r.Route("/providers", func(r chi.Router) {
@@ -181,10 +202,31 @@ func New(
 								r.Delete("/", handlers.Deployment.DeleteTarget)
 								r.Post("/trigger", handlers.Deployment.Deploy)
 								r.Get("/runs", handlers.Deployment.ListRuns)
+
+								// Monitoring per target
+								if handlers.Monitoring != nil {
+									r.Post("/metrics/collect", handlers.Monitoring.CollectMetrics)
+									r.Get("/metrics/latest", handlers.Monitoring.LatestMetric)
+									r.Get("/metrics/history", handlers.Monitoring.MetricsHistory)
+									r.Get("/stages", handlers.Monitoring.ListStages)
+									r.Post("/stages", handlers.Monitoring.CreateStage)
+									r.Delete("/stages/{stageId}", handlers.Monitoring.DeleteStage)
+								}
 							})
 						})
 
 						r.Get("/runs/{runId}", handlers.Deployment.GetRun)
+					}
+
+					// Webhooks
+					if handlers.Webhook != nil {
+						r.Route("/webhooks", func(r chi.Router) {
+							r.Get("/", handlers.Webhook.List)
+							r.Post("/", handlers.Webhook.Create)
+							r.Delete("/{webhookId}", handlers.Webhook.Delete)
+							r.Put("/{webhookId}/active", handlers.Webhook.SetActive)
+							r.Get("/{webhookId}/secret", handlers.Webhook.GetSecret)
+						})
 					}
 				})
 			})
@@ -193,6 +235,11 @@ func New(
 		// WebSocket routes (auth via query param)
 		r.Get("/projects/{id}/chat/ws", handlers.Chat.WebSocket)
 		r.Get("/projects/{id}/terminal/ws/{sessionId}", handlers.Terminal.WebSocket)
+
+		// Notification WebSocket
+		if handlers.Notification != nil {
+			r.Get("/notifications/ws", handlers.Notification.WebSocket)
+		}
 	})
 
 	return r

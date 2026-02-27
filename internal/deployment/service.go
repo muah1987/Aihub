@@ -415,6 +415,23 @@ func (s *Service) runScript(client *ssh.Client, script string) (string, error) {
 	return out.String(), err
 }
 
+// RunSSHCommand satisfies the monitoring.SSHRunner interface.
+// It connects to the target and runs a one-shot bash command.
+func (s *Service) RunSSHCommand(targetID uuid.UUID, cmd string) (string, error) {
+	// We need project_id to call GetTarget, but monitoring only has targetID.
+	// Query the target directly by ID.
+	var target models.VPSTarget
+	if err := s.db.First(&target, "id = ?", targetID).Error; err != nil {
+		return "", fmt.Errorf("target not found: %w", err)
+	}
+	client, err := s.sshConnect(&target)
+	if err != nil {
+		return "", err
+	}
+	defer client.Close()
+	return s.runScript(client, cmd)
+}
+
 // ─── AES-GCM helpers ─────────────────────────────────────────────────────────
 
 func (s *Service) encrypt(plaintext string) (string, error) {

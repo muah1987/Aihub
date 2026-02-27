@@ -1,6 +1,7 @@
 import { useAuth } from '../../hooks/useAuth';
 import { LogOut, Settings, Cpu } from 'lucide-react';
 import { EmailVerificationBanner } from '../auth/EmailVerificationBanner';
+import { NotificationBell } from '../notifications/NotificationBell';
 
 export function Header() {
   const { user, logout } = useAuth();
@@ -14,10 +15,11 @@ export function Header() {
         </div>
 
         {user && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <span className="text-sm text-[var(--color-text-secondary)] hidden sm:block">
               {user.display_name}
             </span>
+            <NotificationBell />
             <button
               className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg"
               title="Settings"

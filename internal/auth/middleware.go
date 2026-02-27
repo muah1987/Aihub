@@ -68,6 +68,12 @@ func GetUserIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	return userID, ok
 }
 
+// GetJWTServiceFromContext retrieves the injected JWTService from context.
+func GetJWTServiceFromContext(ctx context.Context) *JWTService {
+	svc, _ := ctx.Value(ContextKeyJWT).(*JWTService)
+	return svc
+}
+
 // OptionalAuth extracts auth info if present but doesn't require it.
 func OptionalAuth(jwtService *JWTService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
