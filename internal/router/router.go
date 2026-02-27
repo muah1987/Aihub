@@ -18,6 +18,7 @@ import (
 	"github.com/muah1987/Aihub/internal/monitoring"
 	"github.com/muah1987/Aihub/internal/notification"
 	"github.com/muah1987/Aihub/internal/organization"
+	"github.com/muah1987/Aihub/internal/platform"
 	"github.com/muah1987/Aihub/internal/project"
 	"github.com/muah1987/Aihub/internal/provider"
 	"github.com/muah1987/Aihub/internal/scheduler"
@@ -50,6 +51,7 @@ type Handlers struct {
 	Knowledge    *knowledge.Handler
 	Integration  *integration.Handler
 	Compliance   *compliance.Handler
+	Platform     *platform.Handler
 }
 
 func New(
@@ -129,6 +131,19 @@ func New(
 				})
 			}
 
+			// Platform: preferences, pinned, global search (Phase 10)
+			if handlers.Platform != nil {
+				r.Route("/preferences", func(r chi.Router) {
+					r.Get("/", handlers.Platform.GetPreferences)
+					r.Put("/", handlers.Platform.UpdatePreferences)
+				})
+				r.Route("/pinned", func(r chi.Router) {
+					r.Get("/", handlers.Platform.ListPinned)
+					r.Post("/reorder", handlers.Platform.ReorderPins)
+				})
+				r.Get("/search", handlers.Platform.GlobalSearch)
+			}
+
 			// Provider connections
 			r.Route("/providers", func(r chi.Router) {
 				r.Get("/", handlers.Provider.List)
@@ -190,6 +205,12 @@ func New(
 					r.Put("/", handlers.Project.Update)
 					r.Delete("/", handlers.Project.Delete)
 
+					// Pin / unpin project (Phase 10)
+					if handlers.Platform != nil {
+						r.Post("/pin", handlers.Platform.PinProject)
+						r.Delete("/pin", handlers.Platform.UnpinProject)
+					}
+
 					// Chat
 					r.Get("/messages", handlers.Chat.GetHistory)
 					r.Post("/messages", handlers.Chat.PostMessage)
@@ -201,6 +222,14 @@ func New(
 						r.Put("/{agentId}", handlers.Agent.Update)
 						r.Delete("/{agentId}", handlers.Agent.Delete)
 						r.Post("/{agentId}/invoke", handlers.Agent.Invoke)
+
+						// Prompt versions (Phase 10)
+						if handlers.Platform != nil {
+							r.Get("/{agentId}/prompts", handlers.Platform.ListPromptVersions)
+							r.Post("/{agentId}/prompts", handlers.Platform.CreatePromptVersion)
+							r.Put("/{agentId}/prompts/{versionId}/activate", handlers.Platform.SetActiveVersion)
+							r.Delete("/{agentId}/prompts/{versionId}", handlers.Platform.DeletePromptVersion)
+						}
 
 						// Agent tool bindings
 						if handlers.Tools != nil {

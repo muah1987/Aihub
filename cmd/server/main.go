@@ -27,6 +27,7 @@ import (
 	"github.com/muah1987/Aihub/internal/monitoring"
 	"github.com/muah1987/Aihub/internal/notification"
 	"github.com/muah1987/Aihub/internal/organization"
+	"github.com/muah1987/Aihub/internal/platform"
 	"github.com/muah1987/Aihub/internal/project"
 	"github.com/muah1987/Aihub/internal/provider"
 	"github.com/muah1987/Aihub/internal/rbac"
@@ -130,6 +131,9 @@ func main() {
 	// Phase 8
 	integrationService := integration.NewService(db)
 
+	// Phase 10
+	platformService := platform.NewService(db)
+
 	// Phase 9
 	auditService := compliance.NewAuditService(db)
 	exportService := compliance.NewExportService(db)
@@ -158,6 +162,7 @@ func main() {
 		Knowledge:    knowledge.NewHandler(knowledgeService),
 		Integration:  integration.NewHandler(integrationService),
 		Compliance:   compliance.NewHandler(auditService, exportService, roleService, retentionService),
+		Platform:     platform.NewHandler(platformService),
 	}
 
 	if terminalService != nil {

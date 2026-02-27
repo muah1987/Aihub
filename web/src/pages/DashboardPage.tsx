@@ -4,6 +4,7 @@ import { AppShell } from '../components/layout/AppShell';
 import { ProjectList } from '../components/project/ProjectList';
 import { CreateProject } from '../components/project/CreateProject';
 import { ProjectDashboard } from '../components/project/ProjectDashboard';
+import { PinnedProjects } from '../components/platform/PinnedProjects';
 import { Button } from '../components/ui/Button';
 import type { Project } from '../api/projects';
 
@@ -23,6 +24,8 @@ export function DashboardPage() {
   return (
     <AppShell activeTab="" onTabChange={() => {}}>
       <div className="p-4 max-w-5xl mx-auto">
+        <PinnedProjects />
+
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-bold">Projects</h1>
