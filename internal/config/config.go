@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -12,6 +13,16 @@ type Config struct {
 	Encryption EncryptionConfig
 	CORS       CORSConfig
 	Docker     DockerConfig
+	SMTP       SMTPConfig
+}
+
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
+	BaseURL  string
 }
 
 type ServerConfig struct {
@@ -72,6 +83,14 @@ func Load() *Config {
 			MemoryLimit: getEnv("SANDBOX_MEMORY_LIMIT", "256m"),
 			CPULimit:    getEnv("SANDBOX_CPU_LIMIT", "0.5"),
 		},
+		SMTP: SMTPConfig{
+			Host:     getEnv("SMTP_HOST", ""),
+			Port:     parseIntEnv("SMTP_PORT", 587),
+			Username: getEnv("SMTP_USERNAME", ""),
+			Password: getEnv("SMTP_PASSWORD", ""),
+			From:     getEnv("SMTP_FROM", "noreply@aihub.dev"),
+			BaseURL:  getEnv("APP_BASE_URL", "http://localhost:5173"),
+		},
 	}
 }
 
@@ -80,6 +99,18 @@ func getEnv(key, fallback string) string {
 		return val
 	}
 	return fallback
+}
+
+func parseIntEnv(key string, fallback int) int {
+	val := os.Getenv(key)
+	if val == "" {
+		return fallback
+	}
+	i, err := strconv.Atoi(val)
+	if err != nil {
+		return fallback
+	}
+	return i
 }
 
 func parseDuration(s string) time.Duration {

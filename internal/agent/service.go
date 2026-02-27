@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"strings"
+
 	"github.com/google/uuid"
 	"github.com/muah1987/Aihub/internal/chat"
+	"github.com/muah1987/Aihub/internal/memory"
 	"github.com/muah1987/Aihub/internal/models"
 	"github.com/muah1987/Aihub/internal/provider"
 	"gorm.io/gorm"
@@ -43,13 +46,15 @@ type Service struct {
 	db              *gorm.DB
 	providerService *provider.Service
 	chatService     *chat.Service
+	memoryService   *memory.Service
 }
 
-func NewService(db *gorm.DB, providerService *provider.Service, chatService *chat.Service) *Service {
+func NewService(db *gorm.DB, providerService *provider.Service, chatService *chat.Service, memoryService *memory.Service) *Service {
 	return &Service{
 		db:              db,
 		providerService: providerService,
 		chatService:     chatService,
+		memoryService:   memoryService,
 	}
 }
 
@@ -188,12 +193,28 @@ func (s *Service) Invoke(userID, projectID, agentID uuid.UUID, input *InvokeInpu
 		return nil, fmt.Errorf("failed to create AI provider: %w", err)
 	}
 
-	// Build messages
+	// Build messages with memory context
+	systemContent := agent.SystemPrompt
+	if s.memoryService != nil {
+		memories, _ := s.memoryService.GetProjectContext(projectID)
+		if len(memories) > 0 {
+			var sb strings.Builder
+			for _, m := range memories {
+				pinned := ""
+				if m.Pinned {
+					pinned = " [PINNED]"
+				}
+				sb.WriteString(fmt.Sprintf("- [%s/%s]%s: %s\n", m.Category, m.Key, pinned, m.Content))
+			}
+			systemContent += "\n\n## Project Context (Team Memory)\n" + sb.String()
+		}
+	}
+
 	messages := []CompletionMsg{}
-	if agent.SystemPrompt != "" {
+	if systemContent != "" {
 		messages = append(messages, CompletionMsg{
 			Role:    "system",
-			Content: agent.SystemPrompt,
+			Content: systemContent,
 		})
 	}
 	messages = append(messages, CompletionMsg{

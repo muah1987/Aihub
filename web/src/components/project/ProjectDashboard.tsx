@@ -4,6 +4,8 @@ import { AppShell } from '../layout/AppShell';
 import { ChatTimeline } from '../chat/ChatTimeline';
 import { TerminalView } from '../terminal/Terminal';
 import { AgentPanel } from '../agent/AgentPanel';
+import { MemoryPanel } from '../memory/MemoryPanel';
+import { TeamPanel } from '../team/TeamPanel';
 import { ArrowLeft } from 'lucide-react';
 
 interface ProjectDashboardProps {
@@ -22,6 +24,10 @@ export function ProjectDashboard({ project, onBack }: ProjectDashboardProps) {
         return <TerminalView projectId={project.id} />;
       case 'agents':
         return <AgentPanel projectId={project.id} />;
+      case 'teams':
+        return <TeamPanel projectId={project.id} />;
+      case 'memory':
+        return <MemoryPanel projectId={project.id} />;
       case 'devops':
         return (
           <div className="flex items-center justify-center h-full text-[var(--color-text-secondary)]">
@@ -62,7 +68,7 @@ export function ProjectDashboard({ project, onBack }: ProjectDashboardProps) {
 
         {/* Desktop tab bar */}
         <div className="hidden sm:flex border-b border-[var(--color-border)] px-4">
-          {['chat', 'cli', 'agents', 'devops', 'logs', 'settings'].map((tab) => (
+          {['chat', 'cli', 'agents', 'teams', 'memory', 'devops', 'logs', 'settings'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}

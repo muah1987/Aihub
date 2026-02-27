@@ -12,8 +12,9 @@ import (
 type TokenType string
 
 const (
-	AccessToken  TokenType = "access"
-	RefreshToken TokenType = "refresh"
+	AccessToken      TokenType = "access"
+	RefreshToken     TokenType = "refresh"
+	PendingTwoFactor TokenType = "2fa_pending"
 )
 
 type Claims struct {
@@ -85,6 +86,11 @@ func (j *JWTService) generateToken(userID uuid.UUID, email, role string, tokenTy
 	}
 
 	return signed, expiresAt.Unix(), nil
+}
+
+func (j *JWTService) GeneratePendingToken(userID uuid.UUID, email, role string) (string, error) {
+	token, _, err := j.generateToken(userID, email, role, PendingTwoFactor, 5*time.Minute)
+	return token, err
 }
 
 func (j *JWTService) ValidateToken(tokenString string) (*Claims, error) {

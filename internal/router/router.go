@@ -7,19 +7,25 @@ import (
 	"github.com/muah1987/Aihub/internal/agent"
 	"github.com/muah1987/Aihub/internal/auth"
 	"github.com/muah1987/Aihub/internal/chat"
+	"github.com/muah1987/Aihub/internal/memory"
 	"github.com/muah1987/Aihub/internal/middleware"
+	"github.com/muah1987/Aihub/internal/organization"
 	"github.com/muah1987/Aihub/internal/project"
 	"github.com/muah1987/Aihub/internal/provider"
+	"github.com/muah1987/Aihub/internal/team"
 	"github.com/muah1987/Aihub/internal/terminal"
 )
 
 type Handlers struct {
-	Auth     *auth.Handler
-	Provider *provider.Handler
-	Project  *project.Handler
-	Chat     *chat.Handler
-	Terminal *terminal.Handler
-	Agent    *agent.Handler
+	Auth         *auth.Handler
+	Provider     *provider.Handler
+	Project      *project.Handler
+	Chat         *chat.Handler
+	Terminal     *terminal.Handler
+	Agent        *agent.Handler
+	Organization *organization.Handler
+	Memory       *memory.Handler
+	Team         *team.Handler
 }
 
 func New(
@@ -49,12 +55,18 @@ func New(
 			r.Post("/register", handlers.Auth.Register)
 			r.Post("/login", handlers.Auth.Login)
 			r.Post("/refresh", handlers.Auth.Refresh)
+			r.Post("/verify-email", handlers.Auth.VerifyEmail)
+			r.Post("/2fa/verify-login", handlers.Auth.LoginVerify2FA)
 
 			// Protected auth routes
 			r.Group(func(r chi.Router) {
 				r.Use(auth.Middleware(jwtService))
 				r.Get("/me", handlers.Auth.Me)
 				r.Post("/logout", handlers.Auth.Logout)
+				r.Post("/resend-verification", handlers.Auth.ResendVerification)
+				r.Post("/2fa/setup", handlers.Auth.Setup2FA)
+				r.Post("/2fa/confirm", handlers.Auth.Confirm2FA)
+				r.Post("/2fa/disable", handlers.Auth.Disable2FA)
 			})
 		})
 
@@ -69,6 +81,24 @@ func New(
 				r.Delete("/{id}", handlers.Provider.Delete)
 				r.Post("/{id}/validate", handlers.Provider.Validate)
 			})
+
+			// Organizations
+			if handlers.Organization != nil {
+				r.Route("/organizations", func(r chi.Router) {
+					r.Get("/", handlers.Organization.List)
+					r.Post("/", handlers.Organization.Create)
+					r.Route("/{orgId}", func(r chi.Router) {
+						r.Get("/", handlers.Organization.Get)
+						r.Put("/", handlers.Organization.Update)
+						r.Delete("/", handlers.Organization.Delete)
+						r.Get("/members", handlers.Organization.ListMembers)
+						r.Post("/invite", handlers.Organization.InviteMember)
+						r.Delete("/members/{userId}", handlers.Organization.RemoveMember)
+						r.Put("/members/{userId}/role", handlers.Organization.UpdateMemberRole)
+					})
+				})
+				r.Post("/invitations/{token}/accept", handlers.Organization.AcceptInvitation)
+			}
 
 			// Projects
 			r.Route("/projects", func(r chi.Router) {
@@ -100,6 +130,37 @@ func New(
 						r.Post("/sessions", handlers.Terminal.CreateSession)
 						r.Delete("/sessions/{sessionId}", handlers.Terminal.StopSession)
 					})
+
+					// Team Memory
+					if handlers.Memory != nil {
+						r.Route("/memory", func(r chi.Router) {
+							r.Get("/", handlers.Memory.List)
+							r.Post("/", handlers.Memory.Set)
+							r.Get("/search", handlers.Memory.Search)
+							r.Get("/{category}/{key}", handlers.Memory.Get)
+							r.Delete("/{memoryId}", handlers.Memory.Delete)
+						})
+					}
+
+					// Agent Teams
+					if handlers.Team != nil {
+						r.Route("/teams", func(r chi.Router) {
+							r.Get("/", handlers.Team.ListTeams)
+							r.Post("/", handlers.Team.CreateTeam)
+							r.Route("/{teamId}", func(r chi.Router) {
+								r.Get("/", handlers.Team.GetTeam)
+								r.Put("/", handlers.Team.UpdateTeam)
+								r.Delete("/", handlers.Team.DeleteTeam)
+								r.Post("/invoke", handlers.Team.InvokeTeam)
+								r.Get("/members", handlers.Team.ListMembers)
+								r.Post("/members", handlers.Team.AddMember)
+								r.Delete("/members/{agentId}", handlers.Team.RemoveMember)
+								r.Put("/leader", handlers.Team.SetLeader)
+								r.Get("/tasks", handlers.Team.ListTasks)
+								r.Get("/tasks/{taskId}", handlers.Team.GetTask)
+							})
+						})
+					}
 				})
 			})
 		})

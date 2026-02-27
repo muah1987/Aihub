@@ -3,7 +3,10 @@ package database
 import (
 	"embed"
 	"fmt"
+	"io/fs"
 	"log"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/muah1987/Aihub/internal/config"
@@ -53,16 +56,33 @@ func RunMigrations(db *gorm.DB) error {
 		return fmt.Errorf("failed to get sql.DB for migrations: %w", err)
 	}
 
-	content, err := MigrationsFS.ReadFile("migrations/000001_init.up.sql")
+	entries, err := fs.ReadDir(MigrationsFS, "migrations")
 	if err != nil {
-		return fmt.Errorf("failed to read migration file: %w", err)
+		return fmt.Errorf("failed to read migrations directory: %w", err)
 	}
 
-	_, err = sqlDB.Exec(string(content))
-	if err != nil {
-		return fmt.Errorf("failed to execute migration: %w", err)
+	var upFiles []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".up.sql") {
+			upFiles = append(upFiles, entry.Name())
+		}
+	}
+	sort.Strings(upFiles)
+
+	for _, filename := range upFiles {
+		content, err := MigrationsFS.ReadFile("migrations/" + filename)
+		if err != nil {
+			return fmt.Errorf("failed to read migration %s: %w", filename, err)
+		}
+
+		_, err = sqlDB.Exec(string(content))
+		if err != nil {
+			return fmt.Errorf("failed to execute migration %s: %w", filename, err)
+		}
+
+		log.Printf("Migration applied: %s", filename)
 	}
 
-	log.Println("Database migrations completed successfully")
+	log.Println("All database migrations completed successfully")
 	return nil
 }

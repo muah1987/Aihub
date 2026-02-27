@@ -1,21 +1,29 @@
-import { User, Bot, Cpu, GitBranch, Wrench } from 'lucide-react';
+import { User, Bot, Cpu, GitBranch, Wrench, Users, CheckCircle } from 'lucide-react';
 import type { Message } from '../../api/chat';
 
-const senderIcons = {
+const senderIcons: Record<string, typeof Cpu> = {
   human: User,
   agent: Bot,
   system: Cpu,
   build: Wrench,
   repo: GitBranch,
+  team: Users,
 };
 
-const senderColors = {
+const senderColors: Record<string, string> = {
   human: 'bg-[var(--color-primary)]/20 text-[var(--color-primary)]',
   agent: 'bg-purple-500/20 text-purple-400',
   system: 'bg-gray-500/20 text-gray-400',
   build: 'bg-yellow-500/20 text-yellow-400',
   repo: 'bg-green-500/20 text-green-400',
+  team: 'bg-cyan-500/20 text-cyan-400',
 };
+
+const isCodeType = (type: string) =>
+  type === 'code' || type === 'agent_output' || type === 'agent_task_complete';
+
+const isTeamType = (type: string) =>
+  type === 'team_synthesis' || type === 'team_invocation';
 
 export function MessageBubble({ message }: { message: Message }) {
   const Icon = senderIcons[message.sender_type] || Cpu;
@@ -25,6 +33,36 @@ export function MessageBubble({ message }: { message: Message }) {
     hour: '2-digit',
     minute: '2-digit',
   });
+
+  const renderContent = () => {
+    if (isCodeType(message.message_type)) {
+      return <pre className="whitespace-pre-wrap font-mono text-xs">{message.content}</pre>;
+    }
+
+    if (message.message_type === 'team_synthesis') {
+      return (
+        <div>
+          <div className="flex items-center gap-1.5 mb-1 text-xs font-medium text-cyan-400">
+            <CheckCircle size={12} /> Team Synthesis
+          </div>
+          <p className="whitespace-pre-wrap">{message.content}</p>
+        </div>
+      );
+    }
+
+    if (isTeamType(message.message_type)) {
+      return (
+        <div>
+          <div className="flex items-center gap-1.5 mb-1 text-xs font-medium text-cyan-400">
+            <Users size={12} /> Team Task
+          </div>
+          <p className="whitespace-pre-wrap">{message.content}</p>
+        </div>
+      );
+    }
+
+    return <p className="whitespace-pre-wrap">{message.content}</p>;
+  };
 
   return (
     <div className={`flex gap-3 px-4 py-2 ${isHuman ? 'flex-row-reverse' : ''}`}>
@@ -43,11 +81,7 @@ export function MessageBubble({ message }: { message: Message }) {
               : 'bg-[var(--color-bg-tertiary)] rounded-tl-sm'
           }`}
         >
-          {message.message_type === 'code' || message.message_type === 'agent_output' ? (
-            <pre className="whitespace-pre-wrap font-mono text-xs">{message.content}</pre>
-          ) : (
-            <p className="whitespace-pre-wrap">{message.content}</p>
-          )}
+          {renderContent()}
         </div>
       </div>
     </div>

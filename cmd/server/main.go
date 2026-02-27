@@ -16,9 +16,14 @@ import (
 	"github.com/muah1987/Aihub/internal/chat"
 	"github.com/muah1987/Aihub/internal/config"
 	"github.com/muah1987/Aihub/internal/database"
+	"github.com/muah1987/Aihub/internal/email"
+	"github.com/muah1987/Aihub/internal/memory"
+	"github.com/muah1987/Aihub/internal/organization"
 	"github.com/muah1987/Aihub/internal/project"
 	"github.com/muah1987/Aihub/internal/provider"
+	"github.com/muah1987/Aihub/internal/rbac"
 	"github.com/muah1987/Aihub/internal/router"
+	"github.com/muah1987/Aihub/internal/team"
 	"github.com/muah1987/Aihub/internal/terminal"
 )
 
@@ -42,9 +47,20 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
+	// Initialize email service
+	var emailService *email.Service
+	emailService = email.NewService(&email.Config{
+		Host:     cfg.SMTP.Host,
+		Port:     cfg.SMTP.Port,
+		Username: cfg.SMTP.Username,
+		Password: cfg.SMTP.Password,
+		From:     cfg.SMTP.From,
+		BaseURL:  cfg.SMTP.BaseURL,
+	})
+
 	// Initialize services
 	jwtService := auth.NewJWTService(&cfg.JWT)
-	authService := auth.NewService(db, jwtService)
+	authService := auth.NewService(db, jwtService, emailService)
 
 	providerService, err := provider.NewService(db, cfg.Encryption.Key)
 	if err != nil {
@@ -76,15 +92,26 @@ func main() {
 		terminalService = terminal.NewService(db, containerMgr)
 	}
 
-	agentService := agent.NewService(db, providerService, chatService)
+	// Phase 2 services
+	memoryService := memory.NewService(db)
+	rbacService := rbac.NewService(db)
+	orgService := organization.NewService(db, emailService)
+
+	agentService := agent.NewService(db, providerService, chatService, memoryService)
+
+	teamService := team.NewService(db)
+	orchestrator := team.NewOrchestrator(db, agentService, chatService, memoryService, providerService)
 
 	// Initialize handlers
 	handlers := &router.Handlers{
-		Auth:     auth.NewHandler(authService),
-		Provider: provider.NewHandler(providerService),
-		Project:  project.NewHandler(projectService),
-		Chat:     chat.NewHandler(chatService, chatHub),
-		Agent:    agent.NewHandler(agentService),
+		Auth:         auth.NewHandler(authService),
+		Provider:     provider.NewHandler(providerService),
+		Project:      project.NewHandler(projectService),
+		Chat:         chat.NewHandler(chatService, chatHub),
+		Agent:        agent.NewHandler(agentService),
+		Organization: organization.NewHandler(orgService, rbacService),
+		Memory:       memory.NewHandler(memoryService),
+		Team:         team.NewHandler(teamService, orchestrator),
 	}
 
 	if terminalService != nil {

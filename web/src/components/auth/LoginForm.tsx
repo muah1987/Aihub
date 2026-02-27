@@ -2,6 +2,8 @@ import { useState, FormEvent } from 'react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { useAuth } from '../../hooks/useAuth';
+import { useAuthStore } from '../../store/authStore';
+import { TwoFactorForm } from './TwoFactorForm';
 
 interface LoginFormProps {
   onSwitchToRegister: () => void;
@@ -9,6 +11,7 @@ interface LoginFormProps {
 
 export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
   const { login, loading, error } = useAuth();
+  const pendingTwoFactorToken = useAuthStore((s) => s.pendingTwoFactorToken);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -20,6 +23,10 @@ export function LoginForm({ onSwitchToRegister }: LoginFormProps) {
       // Error handled by store
     }
   };
+
+  if (pendingTwoFactorToken) {
+    return <TwoFactorForm />;
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">

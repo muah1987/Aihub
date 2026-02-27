@@ -19,6 +19,7 @@ type Project struct {
 	RepoURL              string         `gorm:"size:500;not null" json:"repo_url"`
 	RepoDefaultBranch    string         `gorm:"size:100;default:main" json:"repo_default_branch"`
 	ProviderConnectionID *uuid.UUID     `gorm:"type:uuid" json:"provider_connection_id,omitempty"`
+	OrganizationID       *uuid.UUID     `gorm:"type:uuid;index" json:"organization_id,omitempty"`
 	Status               string         `gorm:"size:20;default:active" json:"status"`
 	Settings             datatypes.JSON `gorm:"type:jsonb;default:'{}'" json:"settings"`
 	CreatedAt            time.Time      `json:"created_at"`
@@ -26,6 +27,7 @@ type Project struct {
 
 	User               User                `gorm:"foreignKey:UserID" json:"-"`
 	ProviderConnection *ProviderConnection `gorm:"foreignKey:ProviderConnectionID" json:"-"`
+	Organization       *Organization       `gorm:"foreignKey:OrganizationID" json:"-"`
 }
 
 func (p *Project) BeforeCreate(tx *gorm.DB) error {
