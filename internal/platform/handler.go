@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/muah1987/Aihub/internal/auth"
+	"github.com/muah1987/Aihub/internal/httputil"
 )
 
 type Handler struct {
@@ -23,34 +24,35 @@ func NewHandler(service *Service) *Handler {
 func (h *Handler) GetPreferences(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.GetUserIDFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		httputil.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	prefs, err := h.service.GetPreferences(userID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get preferences"})
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to get preferences")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"preferences": prefs})
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{"preferences": prefs})
 }
 
 func (h *Handler) UpdatePreferences(w http.ResponseWriter, r *http.Request) {
+	httputil.LimitBody(w, r, httputil.MaxBodySize)
 	userID, ok := auth.GetUserIDFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		httputil.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	var input PreferencesInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	prefs, err := h.service.UpdatePreferences(userID, &input)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update preferences"})
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to update preferences")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"preferences": prefs})
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{"preferences": prefs})
 }
 
 // ---- Pinned Projects ----
@@ -58,82 +60,84 @@ func (h *Handler) UpdatePreferences(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListPinned(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.GetUserIDFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		httputil.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	pins, err := h.service.ListPinned(userID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list pinned"})
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to list pinned")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"pinned": pins})
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{"pinned": pins})
 }
 
 func (h *Handler) PinProject(w http.ResponseWriter, r *http.Request) {
+	httputil.LimitBody(w, r, httputil.MaxBodySize)
 	userID, ok := auth.GetUserIDFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		httputil.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	projectID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid project id"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid project id")
 		return
 	}
 	pin, err := h.service.PinProject(userID, projectID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to pin"})
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to pin")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]interface{}{"pinned": pin})
+	httputil.WriteJSON(w, http.StatusCreated, map[string]interface{}{"pinned": pin})
 }
 
 func (h *Handler) UnpinProject(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.GetUserIDFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		httputil.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	projectID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid project id"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid project id")
 		return
 	}
 	if err := h.service.UnpinProject(userID, projectID); err != nil {
 		if errors.Is(err, ErrPinnedNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not pinned"})
+			httputil.WriteError(w, http.StatusNotFound, "not pinned")
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to unpin"})
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to unpin")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"message": "unpinned"})
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "unpinned"})
 }
 
 func (h *Handler) ReorderPins(w http.ResponseWriter, r *http.Request) {
+	httputil.LimitBody(w, r, httputil.MaxBodySize)
 	userID, ok := auth.GetUserIDFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		httputil.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	var body struct {
 		ProjectIDs []string `json:"project_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	var ids []uuid.UUID
 	for _, s := range body.ProjectIDs {
 		id, err := uuid.Parse(s)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid project id: " + s})
+			httputil.WriteError(w, http.StatusBadRequest, "invalid project id: "+s)
 			return
 		}
 		ids = append(ids, id)
 	}
 	h.service.ReorderPins(userID, ids)
-	writeJSON(w, http.StatusOK, map[string]string{"message": "reordered"})
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "reordered"})
 }
 
 // ---- Global Search ----
@@ -141,21 +145,21 @@ func (h *Handler) ReorderPins(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GlobalSearch(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.GetUserIDFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		httputil.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	q := r.URL.Query().Get("q")
 	if q == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "search query is required"})
+		httputil.WriteError(w, http.StatusBadRequest, "search query is required")
 		return
 	}
 
 	results, err := h.service.GlobalSearch(userID, q, 20)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "search failed"})
+		httputil.WriteError(w, http.StatusInternalServerError, "search failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"results": results})
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{"results": results})
 }
 
 // ---- Prompt Versions ----
@@ -163,26 +167,27 @@ func (h *Handler) GlobalSearch(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListPromptVersions(w http.ResponseWriter, r *http.Request) {
 	agentID, err := uuid.Parse(chi.URLParam(r, "agentId"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid agent id")
 		return
 	}
 	versions, err := h.service.ListPromptVersions(agentID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list versions"})
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to list versions")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"versions": versions})
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{"versions": versions})
 }
 
 func (h *Handler) CreatePromptVersion(w http.ResponseWriter, r *http.Request) {
+	httputil.LimitBody(w, r, httputil.MaxBodySize)
 	userID, ok := auth.GetUserIDFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		httputil.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	agentID, err := uuid.Parse(chi.URLParam(r, "agentId"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid agent id")
 		return
 	}
 
@@ -191,66 +196,61 @@ func (h *Handler) CreatePromptVersion(w http.ResponseWriter, r *http.Request) {
 		SystemPrompt string `json:"system_prompt"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Label == "" || body.SystemPrompt == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "label and system_prompt are required"})
+		httputil.WriteError(w, http.StatusBadRequest, "label and system_prompt are required")
 		return
 	}
 
 	v, err := h.service.CreatePromptVersion(agentID, &userID, body.Label, body.SystemPrompt)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create"})
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to create")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]interface{}{"version": v})
+	httputil.WriteJSON(w, http.StatusCreated, map[string]interface{}{"version": v})
 }
 
 func (h *Handler) SetActiveVersion(w http.ResponseWriter, r *http.Request) {
+	httputil.LimitBody(w, r, httputil.MaxBodySize)
 	agentID, err := uuid.Parse(chi.URLParam(r, "agentId"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid agent id")
 		return
 	}
 	versionID, err := uuid.Parse(chi.URLParam(r, "versionId"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid version id"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid version id")
 		return
 	}
 
 	if err := h.service.SetActivePromptVersion(agentID, versionID); err != nil {
 		if errors.Is(err, ErrPromptVersionNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "version not found"})
+			httputil.WriteError(w, http.StatusNotFound, "version not found")
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to activate"})
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to activate")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"message": "version activated"})
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "version activated"})
 }
 
 func (h *Handler) DeletePromptVersion(w http.ResponseWriter, r *http.Request) {
 	agentID, err := uuid.Parse(chi.URLParam(r, "agentId"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid agent id"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid agent id")
 		return
 	}
 	versionID, err := uuid.Parse(chi.URLParam(r, "versionId"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid version id"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid version id")
 		return
 	}
 
 	if err := h.service.DeletePromptVersion(agentID, versionID); err != nil {
 		if errors.Is(err, ErrPromptVersionNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "version not found"})
+			httputil.WriteError(w, http.StatusNotFound, "version not found")
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete"})
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to delete")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"message": "version deleted"})
-}
-
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "version deleted"})
 }

@@ -37,9 +37,11 @@ func (s *Service) ShareMemory(orgID, projectID, memoryID uuid.UUID, userID *uuid
 
 	// Refetch with relations
 	var fetched models.SharedMemory
-	s.db.Preload("Memory").Preload("Project").
+	if err := s.db.Preload("Memory").Preload("Project").
 		Where("organization_id = ? AND source_memory_id = ?", orgID, memoryID).
-		First(&fetched)
+		First(&fetched).Error; err != nil {
+		return nil, fmt.Errorf("failed to refetch shared memory: %w", err)
+	}
 
 	return &fetched, nil
 }
@@ -47,10 +49,13 @@ func (s *Service) ShareMemory(orgID, projectID, memoryID uuid.UUID, userID *uuid
 // UnshareMemory removes a shared memory entry.
 func (s *Service) UnshareMemory(orgID, sharedID uuid.UUID) error {
 	result := s.db.Where("id = ? AND organization_id = ?", sharedID, orgID).Delete(&models.SharedMemory{})
+	if result.Error != nil {
+		return result.Error
+	}
 	if result.RowsAffected == 0 {
 		return ErrSharedMemoryNotFound
 	}
-	return result.Error
+	return nil
 }
 
 // ListSharedMemories returns all memories shared with an organization.

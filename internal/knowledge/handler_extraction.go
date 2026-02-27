@@ -9,12 +9,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/muah1987/Aihub/internal/auth"
+	"github.com/muah1987/Aihub/internal/httputil"
 )
 
 func (h *Handler) ListExtractions(w http.ResponseWriter, r *http.Request) {
 	projectID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid project id"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid project id")
 		return
 	}
 
@@ -23,65 +24,75 @@ func (h *Handler) ListExtractions(w http.ResponseWriter, r *http.Request) {
 
 	extractions, err := h.service.ListExtractions(projectID, status, limit)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list extractions"})
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to list extractions")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"extractions": extractions})
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{"extractions": extractions})
 }
 
 func (h *Handler) AcceptExtraction(w http.ResponseWriter, r *http.Request) {
+	httputil.LimitBody(w, r, httputil.MaxBodySize)
 	userID, ok := auth.GetUserIDFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		httputil.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
 	projectID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid project id"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid project id")
 		return
 	}
 	extractionID, err := uuid.Parse(chi.URLParam(r, "extractionId"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid extraction id"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid extraction id")
 		return
 	}
 
 	var body struct {
 		SaveToMemory bool `json:"save_to_memory"`
 	}
-	json.NewDecoder(r.Body).Decode(&body)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
 
 	if err := h.service.AcceptExtraction(projectID, extractionID, body.SaveToMemory, &userID); err != nil {
 		if errors.Is(err, ErrExtractionNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "extraction not found"})
+			httputil.WriteError(w, http.StatusNotFound, "extraction not found")
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to accept extraction"})
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to accept extraction")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"message": "extraction accepted"})
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "extraction accepted"})
 }
 
 func (h *Handler) RejectExtraction(w http.ResponseWriter, r *http.Request) {
+	_, ok := auth.GetUserIDFromContext(r.Context())
+	if !ok {
+		httputil.WriteError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	projectID, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid project id"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid project id")
 		return
 	}
 	extractionID, err := uuid.Parse(chi.URLParam(r, "extractionId"))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid extraction id"})
+		httputil.WriteError(w, http.StatusBadRequest, "invalid extraction id")
 		return
 	}
 
 	if err := h.service.RejectExtraction(projectID, extractionID); err != nil {
 		if errors.Is(err, ErrExtractionNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "extraction not found"})
+			httputil.WriteError(w, http.StatusNotFound, "extraction not found")
 			return
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reject extraction"})
+		httputil.WriteError(w, http.StatusInternalServerError, "failed to reject extraction")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"message": "extraction rejected"})
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "extraction rejected"})
 }

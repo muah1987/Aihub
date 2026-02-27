@@ -3,12 +3,21 @@ package platform
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/muah1987/Aihub/internal/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+// escapeLike escapes LIKE special characters in user input.
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
+}
 
 var (
 	ErrPreferencesNotFound = errors.New("preferences not found")
@@ -118,9 +127,13 @@ func (s *Service) UpdatePreferences(userID uuid.UUID, input *PreferencesInput) (
 				prefs.Timezone = v.(string)
 			}
 		}
-		s.db.Create(prefs)
+		if err := s.db.Create(prefs).Error; err != nil {
+			return nil, fmt.Errorf("failed to create preferences: %w", err)
+		}
 	} else {
-		s.db.Model(prefs).Updates(updates)
+		if err := s.db.Model(prefs).Updates(updates).Error; err != nil {
+			return nil, fmt.Errorf("failed to update preferences: %w", err)
+		}
 	}
 
 	return s.GetPreferences(userID)
@@ -162,19 +175,26 @@ func (s *Service) PinProject(userID, projectID uuid.UUID) (*models.PinnedProject
 
 func (s *Service) UnpinProject(userID, projectID uuid.UUID) error {
 	result := s.db.Where("user_id = ? AND project_id = ?", userID, projectID).Delete(&models.PinnedProject{})
+	if result.Error != nil {
+		return result.Error
+	}
 	if result.RowsAffected == 0 {
 		return ErrPinnedNotFound
 	}
-	return result.Error
+	return nil
 }
 
 func (s *Service) ReorderPins(userID uuid.UUID, projectIDs []uuid.UUID) error {
-	for i, pid := range projectIDs {
-		s.db.Model(&models.PinnedProject{}).
-			Where("user_id = ? AND project_id = ?", userID, pid).
-			Update("pin_order", i)
-	}
-	return nil
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		for i, pid := range projectIDs {
+			if err := tx.Model(&models.PinnedProject{}).
+				Where("user_id = ? AND project_id = ?", userID, pid).
+				Update("pin_order", i).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // ---- Global Search ----
@@ -226,8 +246,9 @@ func (s *Service) GlobalSearch(userID uuid.UUID, query string, limit int) ([]Sea
 
 	// Search agents
 	var agents []models.Agent
+	escaped := escapeLike(query)
 	s.db.Where("project_id IN (SELECT id FROM projects WHERE user_id = ?) AND (name ILIKE ? OR system_prompt ILIKE ?)",
-		userID, "%"+query+"%", "%"+query+"%").Limit(limit / 4).Find(&agents)
+		userID, "%"+escaped+"%", "%"+escaped+"%").Limit(limit / 4).Find(&agents)
 	for _, a := range agents {
 		snippet := a.SystemPrompt
 		if len(snippet) > 150 {
@@ -281,27 +302,37 @@ func (s *Service) CreatePromptVersion(agentID uuid.UUID, userID *uuid.UUID, labe
 }
 
 func (s *Service) SetActivePromptVersion(agentID, versionID uuid.UUID) error {
-	// Deactivate all
-	s.db.Model(&models.PromptVersion{}).Where("agent_id = ?", agentID).Update("is_active", false)
-	// Activate selected
-	result := s.db.Model(&models.PromptVersion{}).Where("id = ? AND agent_id = ?", versionID, agentID).Update("is_active", true)
-	if result.RowsAffected == 0 {
-		return ErrPromptVersionNotFound
-	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// Deactivate all
+		if err := tx.Model(&models.PromptVersion{}).Where("agent_id = ?", agentID).Update("is_active", false).Error; err != nil {
+			return err
+		}
+		// Activate selected
+		result := tx.Model(&models.PromptVersion{}).Where("id = ? AND agent_id = ?", versionID, agentID).Update("is_active", true)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrPromptVersionNotFound
+		}
 
-	// Also update the agent's system_prompt
-	var v models.PromptVersion
-	if err := s.db.First(&v, "id = ?", versionID).Error; err == nil {
-		s.db.Model(&models.Agent{}).Where("id = ?", agentID).Update("system_prompt", v.SystemPrompt)
-	}
+		// Also update the agent's system_prompt
+		var v models.PromptVersion
+		if err := tx.First(&v, "id = ?", versionID).Error; err == nil {
+			tx.Model(&models.Agent{}).Where("id = ?", agentID).Update("system_prompt", v.SystemPrompt)
+		}
 
-	return result.Error
+		return nil
+	})
 }
 
 func (s *Service) DeletePromptVersion(agentID, versionID uuid.UUID) error {
 	result := s.db.Where("id = ? AND agent_id = ?", versionID, agentID).Delete(&models.PromptVersion{})
+	if result.Error != nil {
+		return result.Error
+	}
 	if result.RowsAffected == 0 {
 		return ErrPromptVersionNotFound
 	}
-	return result.Error
+	return nil
 }

@@ -133,10 +133,13 @@ func (s *RoleService) GrantPermission(orgID uuid.UUID, grantedBy *uuid.UUID, inp
 
 func (s *RoleService) RevokePermission(orgID, permID uuid.UUID) error {
 	result := s.db.Where("id = ? AND organization_id = ?", permID, orgID).Delete(&models.ResourcePermission{})
+	if result.Error != nil {
+		return result.Error
+	}
 	if result.RowsAffected == 0 {
 		return errors.New("permission not found")
 	}
-	return result.Error
+	return nil
 }
 
 func (s *RoleService) ListPermissions(orgID uuid.UUID, userID *uuid.UUID, resourceType string) ([]models.ResourcePermission, error) {

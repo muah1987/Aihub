@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Sun, Moon, Monitor, Palette, Type, Volume2, VolumeX, Globe } from 'lucide-react';
 import { platformApi, type UserPreference } from '../../api/platform';
 
@@ -14,11 +14,12 @@ export function PreferencesPanel() {
   const [prefs, setPrefs] = useState<UserPreference | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const fontSizeDebounce = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     platformApi.getPreferences()
       .then((res) => setPrefs(res.data.preferences))
-      .catch(() => {})
+      .catch((err) => { console.error(err); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -27,8 +28,8 @@ export function PreferencesPanel() {
     try {
       const res = await platformApi.updatePreferences(updates);
       setPrefs(res.data.preferences);
-    } catch {
-      // silent
+    } catch (err) {
+      console.error(err);
     } finally {
       setSaving(false);
     }
@@ -99,7 +100,12 @@ export function PreferencesPanel() {
             min={10}
             max={24}
             value={prefs.editor_font_size}
-            onChange={(e) => updatePref({ editor_font_size: Number(e.target.value) })}
+            onChange={(e) => {
+              const size = Number(e.target.value);
+              setPrefs(prev => prev ? { ...prev, editor_font_size: size } : prev);
+              clearTimeout(fontSizeDebounce.current);
+              fontSizeDebounce.current = setTimeout(() => updatePref({ editor_font_size: size }), 300);
+            }}
             className="flex-1 accent-[var(--color-primary)]"
           />
           <span className="text-sm font-mono w-8 text-center">{prefs.editor_font_size}</span>

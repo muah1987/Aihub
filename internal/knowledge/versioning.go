@@ -14,31 +14,35 @@ var ErrVersionNotFound = errors.New("version not found")
 
 // RecordVersion saves a snapshot of a memory entry's content.
 func (s *Service) RecordVersion(memoryID uuid.UUID, content, contentType, changeType string, changedBy *uuid.UUID) error {
-	// Get the next version number
-	var maxVersion int
-	s.db.Model(&models.MemoryVersion{}).
-		Where("memory_id = ?", memoryID).
-		Select("COALESCE(MAX(version_number), 0)").
-		Scan(&maxVersion)
-
-	version := &models.MemoryVersion{
-		MemoryID:      memoryID,
-		VersionNumber: maxVersion + 1,
-		Content:       content,
-		ContentType:   contentType,
-		ChangedBy:     changedBy,
-		ChangeType:    changeType,
-	}
-
-	// Generate diff summary vs previous version
-	if maxVersion > 0 {
-		var prev models.MemoryVersion
-		if err := s.db.Where("memory_id = ? AND version_number = ?", memoryID, maxVersion).First(&prev).Error; err == nil {
-			version.DiffSummary = generateDiffSummary(prev.Content, content)
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// Get the next version number with row-level lock
+		var maxVersion int
+		if err := tx.Raw(
+			"SELECT COALESCE(MAX(version_number), 0) FROM memory_versions WHERE memory_id = ? FOR UPDATE",
+			memoryID,
+		).Scan(&maxVersion).Error; err != nil {
+			return fmt.Errorf("failed to get max version: %w", err)
 		}
-	}
 
-	return s.db.Create(version).Error
+		version := &models.MemoryVersion{
+			MemoryID:      memoryID,
+			VersionNumber: maxVersion + 1,
+			Content:       content,
+			ContentType:   contentType,
+			ChangedBy:     changedBy,
+			ChangeType:    changeType,
+		}
+
+		// Generate diff summary vs previous version
+		if maxVersion > 0 {
+			var prev models.MemoryVersion
+			if err := tx.Where("memory_id = ? AND version_number = ?", memoryID, maxVersion).First(&prev).Error; err == nil {
+				version.DiffSummary = generateDiffSummary(prev.Content, content)
+			}
+		}
+
+		return tx.Create(version).Error
+	})
 }
 
 // ListVersions returns all versions for a memory entry.

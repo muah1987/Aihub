@@ -2,7 +2,9 @@ package compliance
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -37,7 +39,12 @@ func (s *AuditService) Log(r *http.Request, orgID, projectID, userID *uuid.UUID,
 	var ip string
 	if r != nil {
 		ip = r.Header.Get("X-Forwarded-For")
-		if ip == "" {
+		if ip != "" {
+			// Take only the first IP in the chain (client IP)
+			if idx := strings.Index(ip, ","); idx != -1 {
+				ip = strings.TrimSpace(ip[:idx])
+			}
+		} else {
 			ip = r.RemoteAddr
 		}
 	}
@@ -59,7 +66,9 @@ func (s *AuditService) Log(r *http.Request, orgID, projectID, userID *uuid.UUID,
 		Severity:       entry.Severity,
 	}
 
-	s.db.Create(log) // fire-and-forget, non-blocking
+	if err := s.db.Create(log).Error; err != nil {
+		fmt.Printf("audit: failed to write log: %v\n", err)
+	}
 }
 
 // LogSimple is a convenience method for logging without an HTTP request context.

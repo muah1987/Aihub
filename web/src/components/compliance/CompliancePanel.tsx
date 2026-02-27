@@ -78,22 +78,27 @@ function AuditTab({ projectId }: { projectId: string }) {
   const [page, setPage] = useState(0);
   const limit = 30;
 
-  useEffect(() => { load(); }, [projectId, actionFilter, severityFilter, page]);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await complianceApi.listAuditLogs(projectId, {
-        action: actionFilter || undefined,
-        severity: severityFilter || undefined,
-        limit,
-        offset: page * limit,
-      });
-      setLogs(res.data.audit_logs || []);
-      setTotal(res.data.total || 0);
-    } catch { /* empty */ }
-    setLoading(false);
-  };
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const res = await complianceApi.listAuditLogs(projectId, {
+          action: actionFilter || undefined,
+          severity: severityFilter || undefined,
+          limit,
+          offset: page * limit,
+        });
+        if (!cancelled) {
+          setLogs(res.data.audit_logs || []);
+          setTotal(res.data.total || 0);
+        }
+      } catch (err) { console.error(err); }
+      if (!cancelled) setLoading(false);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [projectId, actionFilter, severityFilter, page]);
 
   return (
     <div className="flex flex-col h-full">
@@ -172,16 +177,22 @@ function ExportsTab({ projectId }: { projectId: string }) {
   const [includeWorkflows, setIncludeWorkflows] = useState(true);
   const [includeSettings, setIncludeSettings] = useState(true);
 
-  useEffect(() => { load(); }, [projectId]);
+  const loadRef = { current: () => {} };
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await complianceApi.listExports(projectId);
-      setExports(res.data.exports || []);
-    } catch { /* empty */ }
-    setLoading(false);
-  };
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const res = await complianceApi.listExports(projectId);
+        if (!cancelled) setExports(res.data.exports || []);
+      } catch (err) { console.error(err); }
+      if (!cancelled) setLoading(false);
+    };
+    loadRef.current = load;
+    load();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -195,13 +206,14 @@ function ExportsTab({ projectId }: { projectId: string }) {
         include_settings: includeSettings,
       });
       setShowCreate(false);
-      load();
-    } catch { /* empty */ }
+      loadRef.current();
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
     setCreating(false);
   };
 
   const handleDelete = async (id: string) => {
-    try { await complianceApi.deleteExport(projectId, id); load(); } catch { /* empty */ }
+    if (!window.confirm('Delete this export?')) return;
+    try { await complianceApi.deleteExport(projectId, id); loadRef.current(); } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   const formatSize = (bytes: number) => {
@@ -249,7 +261,17 @@ function ExportsTab({ projectId }: { projectId: string }) {
                   </div>
                 </div>
                 {exp.status === 'ready' && (
-                  <button onClick={() => window.open(`/api/v1/projects/${projectId}/exports/${exp.id}/download`)}
+                  <button onClick={async () => {
+                    try {
+                      const res = await complianceApi.downloadExport(projectId, exp.id);
+                      const url = URL.createObjectURL(res.data);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `export-${exp.id}.json`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    } catch (err) { console.error(err); alert('Failed to download export.'); }
+                  }}
                     className="flex items-center gap-1 px-2 py-1 text-xs bg-[var(--color-primary)] text-white rounded">
                     <Download size={12} /> Download
                   </button>
@@ -305,16 +327,22 @@ function RetentionTab({ projectId }: { projectId: string }) {
   const [resourceType, setResourceType] = useState('messages');
   const [retentionDays, setRetentionDays] = useState(90);
 
-  useEffect(() => { load(); }, [projectId]);
+  const loadRef = { current: () => {} };
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await complianceApi.listRetentionPolicies(projectId);
-      setPolicies(res.data.policies || []);
-    } catch { /* empty */ }
-    setLoading(false);
-  };
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const res = await complianceApi.listRetentionPolicies(projectId);
+        if (!cancelled) setPolicies(res.data.policies || []);
+      } catch (err) { console.error(err); }
+      if (!cancelled) setLoading(false);
+    };
+    loadRef.current = load;
+    load();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -325,12 +353,13 @@ function RetentionTab({ projectId }: { projectId: string }) {
         enabled: true,
       });
       setShowCreate(false);
-      load();
-    } catch { /* empty */ }
+      loadRef.current();
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   const handleDelete = async (id: string) => {
-    try { await complianceApi.deleteRetentionPolicy(projectId, id); load(); } catch { /* empty */ }
+    if (!window.confirm('Delete this retention policy?')) return;
+    try { await complianceApi.deleteRetentionPolicy(projectId, id); loadRef.current(); } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   const resourceTypes = [

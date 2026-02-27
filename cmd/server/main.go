@@ -129,7 +129,7 @@ func main() {
 	knowledgeService := knowledge.NewService(db)
 
 	// Phase 8
-	integrationService := integration.NewService(db)
+	integrationService := integration.NewService(db, cfg.Encryption.Key)
 
 	// Phase 10
 	platformService := platform.NewService(db)

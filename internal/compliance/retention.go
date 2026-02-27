@@ -11,7 +11,19 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-var ErrPolicyNotFound = errors.New("retention policy not found")
+var (
+	ErrPolicyNotFound        = errors.New("retention policy not found")
+	ErrInvalidResourceType   = errors.New("invalid resource_type")
+)
+
+// validResourceTypes is the whitelist of allowed retention resource types.
+var validResourceTypes = map[string]bool{
+	"audit_logs":       true,
+	"messages":         true,
+	"notifications":    true,
+	"outbound_events":  true,
+	"server_metrics":   true,
+}
 
 // RetentionService manages data retention policies and cleanup.
 type RetentionService struct {
@@ -29,6 +41,9 @@ type UpsertPolicyInput struct {
 }
 
 func (s *RetentionService) UpsertPolicy(orgID, projectID *uuid.UUID, userID *uuid.UUID, input *UpsertPolicyInput) (*models.RetentionPolicy, error) {
+	if !validResourceTypes[input.ResourceType] {
+		return nil, ErrInvalidResourceType
+	}
 	if input.RetentionDays < 1 {
 		input.RetentionDays = 90
 	}
@@ -86,10 +101,13 @@ func (s *RetentionService) ListPolicies(orgID, projectID *uuid.UUID) ([]models.R
 
 func (s *RetentionService) DeletePolicy(policyID uuid.UUID) error {
 	result := s.db.Where("id = ?", policyID).Delete(&models.RetentionPolicy{})
+	if result.Error != nil {
+		return result.Error
+	}
 	if result.RowsAffected == 0 {
 		return ErrPolicyNotFound
 	}
-	return result.Error
+	return nil
 }
 
 // tableForResourceType maps resource types to their database tables and timestamp columns.

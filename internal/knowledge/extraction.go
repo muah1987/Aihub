@@ -120,34 +120,35 @@ func (s *Service) ListExtractions(projectID uuid.UUID, status string, limit int)
 
 // AcceptExtraction accepts an extraction and optionally saves it to memory.
 func (s *Service) AcceptExtraction(projectID, extractionID uuid.UUID, saveToMemory bool, userID *uuid.UUID) error {
-	var extraction models.AutoExtraction
-	if err := s.db.Where("id = ? AND project_id = ?", extractionID, projectID).First(&extraction).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrExtractionNotFound
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var extraction models.AutoExtraction
+		if err := tx.Where("id = ? AND project_id = ?", extractionID, projectID).First(&extraction).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrExtractionNotFound
+			}
+			return err
 		}
-		return err
-	}
 
-	accepted := true
-	updates := map[string]interface{}{"accepted": accepted}
+		accepted := true
+		updates := map[string]interface{}{"accepted": accepted}
 
-	if saveToMemory {
-		// Create a team memory entry from the extraction
-		mem := &models.TeamMemory{
-			ProjectID:   projectID,
-			Category:    extraction.ExtractionType,
-			Key:         fmt.Sprintf("auto-%s", extraction.ID.String()[:8]),
-			Content:     extraction.ExtractedContent,
-			ContentType: "text",
-			CreatedBy:   userID,
+		if saveToMemory {
+			mem := &models.TeamMemory{
+				ProjectID:   projectID,
+				Category:    extraction.ExtractionType,
+				Key:         fmt.Sprintf("auto-%s", extraction.ID.String()[:8]),
+				Content:     extraction.ExtractedContent,
+				ContentType: "text",
+				CreatedBy:   userID,
+			}
+			if err := tx.Create(mem).Error; err != nil {
+				return fmt.Errorf("failed to create memory from extraction: %w", err)
+			}
+			updates["memory_id"] = mem.ID
 		}
-		if err := s.db.Create(mem).Error; err != nil {
-			return fmt.Errorf("failed to create memory from extraction: %w", err)
-		}
-		updates["memory_id"] = mem.ID
-	}
 
-	return s.db.Model(&models.AutoExtraction{}).Where("id = ?", extractionID).Updates(updates).Error
+		return tx.Model(&models.AutoExtraction{}).Where("id = ?", extractionID).Updates(updates).Error
+	})
 }
 
 // RejectExtraction marks an extraction as rejected.
@@ -156,10 +157,13 @@ func (s *Service) RejectExtraction(projectID, extractionID uuid.UUID) error {
 	result := s.db.Model(&models.AutoExtraction{}).
 		Where("id = ? AND project_id = ?", extractionID, projectID).
 		Update("accepted", rejected)
+	if result.Error != nil {
+		return result.Error
+	}
 	if result.RowsAffected == 0 {
 		return ErrExtractionNotFound
 	}
-	return result.Error
+	return nil
 }
 
 // extractSentence finds the sentence in text that contains the keyword.

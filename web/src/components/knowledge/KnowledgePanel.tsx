@@ -74,14 +74,26 @@ function DocumentsTab({ projectId }: { projectId: string }) {
   const [fileType, setFileType] = useState('text');
   const [content, setContent] = useState('');
 
-  useEffect(() => { loadDocs(); }, [projectId]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const res = await knowledgeApi.listDocuments(projectId);
+        if (!cancelled) setDocs(res.data.documents || []);
+      } catch (err) { console.error(err); }
+      if (!cancelled) setLoading(false);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   const loadDocs = async () => {
     setLoading(true);
     try {
       const res = await knowledgeApi.listDocuments(projectId);
       setDocs(res.data.documents || []);
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); }
     setLoading(false);
   };
 
@@ -94,15 +106,16 @@ function DocumentsTab({ projectId }: { projectId: string }) {
       setShowCreate(false);
       setTitle(''); setFileName(''); setContent('');
       loadDocs();
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this document?')) return;
     try {
       await knowledgeApi.deleteDocument(projectId, id);
       if (selectedDoc?.id === id) setSelectedDoc(null);
       loadDocs();
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   const selectDoc = async (doc: KnowledgeDocument) => {
@@ -110,7 +123,7 @@ function DocumentsTab({ projectId }: { projectId: string }) {
     try {
       const res = await knowledgeApi.getChunks(projectId, doc.id);
       setChunks(res.data.chunks || []);
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   const handleSearch = async () => {
@@ -118,7 +131,7 @@ function DocumentsTab({ projectId }: { projectId: string }) {
     try {
       const res = await knowledgeApi.searchChunks(projectId, searchQuery);
       setSearchResults(res.data.chunks || []);
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   if (selectedDoc) {
@@ -254,7 +267,17 @@ function VersionsTab({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadMemories();
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const res = await memoryApi.list(projectId);
+        if (!cancelled) setMemories(res.data.memories || []);
+      } catch (err) { console.error(err); }
+      if (!cancelled) setLoading(false);
+    };
+    load();
+    return () => { cancelled = true; };
   }, [projectId]);
 
   const loadMemories = async () => {
@@ -262,7 +285,7 @@ function VersionsTab({ projectId }: { projectId: string }) {
     try {
       const res = await memoryApi.list(projectId);
       setMemories(res.data.memories || []);
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); }
     setLoading(false);
   };
 
@@ -271,15 +294,16 @@ function VersionsTab({ projectId }: { projectId: string }) {
     try {
       const res = await knowledgeApi.listVersions(projectId, mem.id);
       setVersions(res.data.versions || []);
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   const handleRollback = async (versionNumber: number) => {
+    if (!window.confirm('Restore this version? Current content will be overwritten.')) return;
     if (!selectedMemory) return;
     try {
       await knowledgeApi.rollback(projectId, selectedMemory.id, versionNumber);
       selectMemory(selectedMemory);
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   if (selectedMemory) {
@@ -356,14 +380,26 @@ function SharedTab({ projectId }: { projectId: string }) {
   const [shared, setShared] = useState<SharedMemory[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadShared(); }, [projectId]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const res = await knowledgeApi.getSharedForProject(projectId);
+        if (!cancelled) setShared(res.data.shared_memories || []);
+      } catch (err) { console.error(err); }
+      if (!cancelled) setLoading(false);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   const loadShared = async () => {
     setLoading(true);
     try {
       const res = await knowledgeApi.getSharedForProject(projectId);
       setShared(res.data.shared_memories || []);
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); }
     setLoading(false);
   };
 
@@ -417,14 +453,26 @@ function ExtractionsTab({ projectId }: { projectId: string }) {
   const [filter, setFilter] = useState<'pending' | 'accepted' | 'rejected' | ''>('pending');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadExtractions(); }, [projectId, filter]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const res = await knowledgeApi.listExtractions(projectId, filter || undefined, 50);
+        if (!cancelled) setExtractions(res.data.extractions || []);
+      } catch (err) { console.error(err); }
+      if (!cancelled) setLoading(false);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [projectId, filter]);
 
   const loadExtractions = async () => {
     setLoading(true);
     try {
       const res = await knowledgeApi.listExtractions(projectId, filter || undefined, 50);
       setExtractions(res.data.extractions || []);
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); }
     setLoading(false);
   };
 
@@ -432,14 +480,15 @@ function ExtractionsTab({ projectId }: { projectId: string }) {
     try {
       await knowledgeApi.acceptExtraction(projectId, id, saveToMemory);
       loadExtractions();
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   const handleReject = async (id: string) => {
+    if (!window.confirm('Reject this extraction?')) return;
     try {
       await knowledgeApi.rejectExtraction(projectId, id);
       loadExtractions();
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   return (

@@ -17,6 +17,9 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
+// Token refresh mutex
+let refreshPromise: Promise<void> | null = null;
+
 // Response interceptor: handle 401 with token refresh
 client.interceptors.response.use(
   (response) => response,
@@ -27,10 +30,18 @@ client.interceptors.response.use(
       const tokens = localStorage.getItem('tokens');
       if (tokens) {
         try {
-          const { refresh_token } = JSON.parse(tokens);
-          const res = await axios.post(`${API_BASE}/auth/refresh`, { refresh_token });
-          localStorage.setItem('tokens', JSON.stringify(res.data.tokens));
-          original.headers.Authorization = `Bearer ${res.data.tokens.access_token}`;
+          if (!refreshPromise) {
+            refreshPromise = (async () => {
+              const { refresh_token } = JSON.parse(tokens);
+              const res = await axios.post(`${API_BASE}/auth/refresh`, { refresh_token });
+              localStorage.setItem('tokens', JSON.stringify(res.data.tokens));
+            })().finally(() => { refreshPromise = null; });
+          }
+          await refreshPromise;
+          const updated = localStorage.getItem('tokens');
+          if (updated) {
+            original.headers.Authorization = `Bearer ${JSON.parse(updated).access_token}`;
+          }
           return client(original);
         } catch {
           localStorage.removeItem('tokens');

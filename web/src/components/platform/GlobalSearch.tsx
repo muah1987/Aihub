@@ -53,7 +53,8 @@ export function GlobalSearch({ open, onClose, onNavigate }: GlobalSearchProps) {
         const res = await platformApi.search(query.trim());
         setResults(res.data.results || []);
         setSelectedIndex(0);
-      } catch {
+      } catch (err) {
+        console.error(err);
         setResults([]);
       } finally {
         setLoading(false);

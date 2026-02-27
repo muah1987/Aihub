@@ -14,8 +14,8 @@ export function PinnedProjects({ onSelectProject }: PinnedProjectsProps) {
     try {
       const res = await platformApi.listPinned();
       setPins(res.data.pinned || []);
-    } catch {
-      // silent
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -26,11 +26,12 @@ export function PinnedProjects({ onSelectProject }: PinnedProjectsProps) {
   }, []);
 
   const handleUnpin = async (projectId: string) => {
+    if (!window.confirm('Unpin this project?')) return;
     try {
       await platformApi.unpinProject(projectId);
       setPins((prev) => prev.filter((p) => p.project_id !== projectId));
-    } catch {
-      // silent
+    } catch (err) {
+      console.error(err);
     }
   };
 

@@ -18,7 +18,7 @@ CREATE TABLE user_preferences (
     UNIQUE(user_id)
 );
 
-CREATE INDEX idx_user_preferences_user ON user_preferences(user_id);
+-- UNIQUE(user_id) already creates an implicit index; no separate index needed.
 
 -- Pinned/favorite projects
 CREATE TABLE pinned_projects (

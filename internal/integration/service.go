@@ -2,11 +2,18 @@ package integration
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,20 +27,103 @@ var (
 	ErrEventNotFound      = errors.New("outbound event not found")
 	ErrRuleNotFound       = errors.New("notification rule not found")
 	ErrDigestNotFound     = errors.New("email digest not found")
+	ErrUnsafeURL          = errors.New("webhook URL is not allowed: must be HTTPS and not target internal networks")
 )
 
 type Service struct {
-	db         *gorm.DB
-	httpClient *http.Client
+	db            *gorm.DB
+	httpClient    *http.Client
+	encryptionKey []byte
 }
 
-func NewService(db *gorm.DB) *Service {
+func NewService(db *gorm.DB, encryptionKey string) *Service {
 	return &Service{
-		db: db,
+		db:            db,
+		encryptionKey: []byte(encryptionKey),
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
 		},
 	}
+}
+
+// encrypt encrypts plaintext using AES-GCM with the service encryption key.
+func (s *Service) encrypt(plaintext string) (string, error) {
+	if len(s.encryptionKey) == 0 {
+		return plaintext, nil
+	}
+	block, err := aes.NewCipher(s.encryptionKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to create cipher: %w", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("failed to create GCM: %w", err)
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", fmt.Errorf("failed to generate nonce: %w", err)
+	}
+	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
+	return base64.StdEncoding.EncodeToString(ciphertext), nil
+}
+
+// decrypt decrypts base64-encoded AES-GCM ciphertext.
+func (s *Service) decrypt(encoded string) (string, error) {
+	if len(s.encryptionKey) == 0 {
+		return encoded, nil
+	}
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return encoded, nil // not encrypted (legacy data), return as-is
+	}
+	block, err := aes.NewCipher(s.encryptionKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to create cipher: %w", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("failed to create GCM: %w", err)
+	}
+	nonceSize := gcm.NonceSize()
+	if len(data) < nonceSize {
+		return encoded, nil // not encrypted, return as-is
+	}
+	plaintext, err := gcm.Open(nil, data[:nonceSize], data[nonceSize:], nil)
+	if err != nil {
+		return encoded, nil // decryption failed (legacy data), return as-is
+	}
+	return string(plaintext), nil
+}
+
+// validateWebhookURL ensures the URL is HTTPS and does not target internal networks.
+func validateWebhookURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ErrUnsafeURL
+	}
+	if parsed.Scheme != "https" {
+		return ErrUnsafeURL
+	}
+	hostname := parsed.Hostname()
+	if hostname == "" {
+		return ErrUnsafeURL
+	}
+	// Block localhost variants
+	lower := strings.ToLower(hostname)
+	if lower == "localhost" || lower == "127.0.0.1" || lower == "::1" || lower == "0.0.0.0" {
+		return ErrUnsafeURL
+	}
+	// Resolve DNS and block private/reserved IPs
+	ips, err := net.LookupIP(hostname)
+	if err != nil {
+		return ErrUnsafeURL
+	}
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return ErrUnsafeURL
+		}
+	}
+	return nil
 }
 
 // ---- Integration Connections CRUD ----
@@ -47,7 +137,30 @@ type CreateConnectionInput struct {
 }
 
 func (s *Service) CreateConnection(projectID uuid.UUID, userID *uuid.UUID, input *CreateConnectionInput) (*models.IntegrationConnection, error) {
-	configJSON, _ := json.Marshal(input.Config)
+	configJSON, err := json.Marshal(input.Config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	// Validate webhook URLs in config
+	for _, key := range []string{"webhook_url", "url"} {
+		if u, ok := input.Config[key]; ok {
+			if uStr, ok := u.(string); ok && uStr != "" {
+				if err := validateWebhookURL(uStr); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	// Encrypt credentials before storage
+	encCreds := input.Credentials
+	if input.Credentials != "" {
+		encCreds, err = s.encrypt(input.Credentials)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt credentials: %w", err)
+		}
+	}
 
 	conn := &models.IntegrationConnection{
 		ProjectID:   projectID,
@@ -55,7 +168,7 @@ func (s *Service) CreateConnection(projectID uuid.UUID, userID *uuid.UUID, input
 		Platform:    input.Platform,
 		Name:        input.Name,
 		Config:      configJSON,
-		Credentials: input.Credentials,
+		Credentials: encCreds,
 		ChannelID:   input.ChannelID,
 		Status:      "connected",
 	}
@@ -92,18 +205,24 @@ func (s *Service) UpdateConnection(projectID, connID uuid.UUID, updates map[stri
 	result := s.db.Model(&models.IntegrationConnection{}).
 		Where("id = ? AND project_id = ?", connID, projectID).
 		Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
 	if result.RowsAffected == 0 {
 		return ErrConnectionNotFound
 	}
-	return result.Error
+	return nil
 }
 
 func (s *Service) DeleteConnection(projectID, connID uuid.UUID) error {
 	result := s.db.Where("id = ? AND project_id = ?", connID, projectID).Delete(&models.IntegrationConnection{})
+	if result.Error != nil {
+		return result.Error
+	}
 	if result.RowsAffected == 0 {
 		return ErrConnectionNotFound
 	}
-	return result.Error
+	return nil
 }
 
 func (s *Service) TestConnection(projectID, connID uuid.UUID) (string, error) {
@@ -126,10 +245,19 @@ func (s *Service) TestConnection(projectID, connID uuid.UUID) (string, error) {
 
 // ---- Dispatchers ----
 
-func (s *Service) testSlack(conn *models.IntegrationConnection) (string, error) {
-	// Post a test message to Slack webhook URL
+func (s *Service) parseConfig(conn *models.IntegrationConnection) (map[string]string, error) {
 	var config map[string]string
-	json.Unmarshal(conn.Config, &config)
+	if err := json.Unmarshal(conn.Config, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse connection config: %w", err)
+	}
+	return config, nil
+}
+
+func (s *Service) testSlack(conn *models.IntegrationConnection) (string, error) {
+	config, err := s.parseConfig(conn)
+	if err != nil {
+		return "error", err
+	}
 	webhookURL := config["webhook_url"]
 	if webhookURL == "" {
 		return "error", fmt.Errorf("webhook_url not configured")
@@ -140,8 +268,10 @@ func (s *Service) testSlack(conn *models.IntegrationConnection) (string, error) 
 }
 
 func (s *Service) testDiscord(conn *models.IntegrationConnection) (string, error) {
-	var config map[string]string
-	json.Unmarshal(conn.Config, &config)
+	config, err := s.parseConfig(conn)
+	if err != nil {
+		return "error", err
+	}
 	webhookURL := config["webhook_url"]
 	if webhookURL == "" {
 		return "error", fmt.Errorf("webhook_url not configured")
@@ -152,25 +282,29 @@ func (s *Service) testDiscord(conn *models.IntegrationConnection) (string, error
 }
 
 func (s *Service) testWebhook(conn *models.IntegrationConnection) (string, error) {
-	var config map[string]string
-	json.Unmarshal(conn.Config, &config)
-	url := config["url"]
-	if url == "" {
+	config, err := s.parseConfig(conn)
+	if err != nil {
+		return "error", err
+	}
+	targetURL := config["url"]
+	if targetURL == "" {
 		return "error", fmt.Errorf("url not configured")
 	}
 
 	payload := map[string]interface{}{
-		"event": "test",
-		"message": "Aihub integration test",
+		"event":     "test",
+		"message":   "Aihub integration test",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	}
-	return s.postJSON(url, payload)
+	return s.postJSON(targetURL, payload)
 }
 
 // SendToIntegration dispatches a message to an integration connection.
 func (s *Service) SendToIntegration(conn *models.IntegrationConnection, eventType string, payload map[string]interface{}) error {
-	var config map[string]string
-	json.Unmarshal(conn.Config, &config)
+	config, err := s.parseConfig(conn)
+	if err != nil {
+		return err
+	}
 
 	var url string
 	var body interface{}
@@ -199,7 +333,7 @@ func (s *Service) SendToIntegration(conn *models.IntegrationConnection, eventTyp
 		return fmt.Errorf("no URL configured for %s", conn.Platform)
 	}
 
-	_, err := s.postJSON(url, body)
+	_, err = s.postJSON(url, body)
 
 	// Update last_used_at
 	now := time.Now()
@@ -210,12 +344,16 @@ func (s *Service) SendToIntegration(conn *models.IntegrationConnection, eventTyp
 
 // DispatchEvent creates an outbound event and sends it.
 func (s *Service) DispatchEvent(projectID uuid.UUID, eventType string, payload map[string]interface{}) error {
-	payloadJSON, _ := json.Marshal(payload)
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %w", err)
+	}
 
 	// Find all enabled integrations for this project
 	var conns []models.IntegrationConnection
 	s.db.Where("project_id = ? AND enabled = true AND status = 'connected'", projectID).Find(&conns)
 
+	var lastErr error
 	for i := range conns {
 		event := &models.OutboundEvent{
 			ProjectID:     projectID,
@@ -225,7 +363,10 @@ func (s *Service) DispatchEvent(projectID uuid.UUID, eventType string, payload m
 			Status:        "pending",
 			MaxAttempts:   3,
 		}
-		s.db.Create(event)
+		if err := s.db.Create(event).Error; err != nil {
+			lastErr = err
+			continue
+		}
 
 		if err := s.SendToIntegration(&conns[i], eventType, payload); err != nil {
 			event.Status = "failed"
@@ -233,6 +374,7 @@ func (s *Service) DispatchEvent(projectID uuid.UUID, eventType string, payload m
 			nextRetry := time.Now().Add(30 * time.Second)
 			event.NextRetryAt = &nextRetry
 			s.db.Save(event)
+			lastErr = err
 		} else {
 			now := time.Now()
 			event.Status = "sent"
@@ -242,7 +384,7 @@ func (s *Service) DispatchEvent(projectID uuid.UUID, eventType string, payload m
 		}
 	}
 
-	return nil
+	return lastErr
 }
 
 // ListOutboundEvents returns recent outbound events for a project.
@@ -335,18 +477,24 @@ func (s *Service) ListRules(userID uuid.UUID, projectID *uuid.UUID) ([]models.No
 func (s *Service) UpdateRule(userID, ruleID uuid.UUID, updates map[string]interface{}) error {
 	result := s.db.Model(&models.NotificationRule{}).
 		Where("id = ? AND user_id = ?", ruleID, userID).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
 	if result.RowsAffected == 0 {
 		return ErrRuleNotFound
 	}
-	return result.Error
+	return nil
 }
 
 func (s *Service) DeleteRule(userID, ruleID uuid.UUID) error {
 	result := s.db.Where("id = ? AND user_id = ?", ruleID, userID).Delete(&models.NotificationRule{})
+	if result.Error != nil {
+		return result.Error
+	}
 	if result.RowsAffected == 0 {
 		return ErrRuleNotFound
 	}
-	return result.Error
+	return nil
 }
 
 // ShouldNotify checks whether a notification should be sent on a given channel.
@@ -468,21 +616,28 @@ func (s *Service) ListDigests(userID uuid.UUID) ([]models.EmailDigest, error) {
 
 func (s *Service) DeleteDigest(userID, digestID uuid.UUID) error {
 	result := s.db.Where("id = ? AND user_id = ?", digestID, userID).Delete(&models.EmailDigest{})
+	if result.Error != nil {
+		return result.Error
+	}
 	if result.RowsAffected == 0 {
 		return ErrDigestNotFound
 	}
-	return result.Error
+	return nil
 }
 
 // ---- Helpers ----
 
-func (s *Service) postJSON(url string, body interface{}) (string, error) {
+func (s *Service) postJSON(targetURL string, body interface{}) (string, error) {
+	if err := validateWebhookURL(targetURL); err != nil {
+		return "error", err
+	}
+
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return "error", err
 	}
 
-	resp, err := s.httpClient.Post(url, "application/json", bytes.NewReader(payload))
+	resp, err := s.httpClient.Post(targetURL, "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return "error", fmt.Errorf("HTTP request failed: %w", err)
 	}

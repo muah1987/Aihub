@@ -87,14 +87,26 @@ function ConnectionsTab({ projectId }: { projectId: string }) {
   const [webhookUrl, setWebhookUrl] = useState('');
   const [channelId, setChannelId] = useState('');
 
-  useEffect(() => { load(); }, [projectId]);
+  useEffect(() => {
+    let cancelled = false;
+    const doLoad = async () => {
+      setLoading(true);
+      try {
+        const res = await integrationApi.listConnections(projectId);
+        if (!cancelled) setConns(res.data.connections || []);
+      } catch (err) { console.error(err); }
+      if (!cancelled) setLoading(false);
+    };
+    doLoad();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   const load = async () => {
     setLoading(true);
     try {
       const res = await integrationApi.listConnections(projectId);
       setConns(res.data.connections || []);
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); }
     setLoading(false);
   };
 
@@ -109,11 +121,12 @@ function ConnectionsTab({ projectId }: { projectId: string }) {
       setShowCreate(false);
       setName(''); setWebhookUrl(''); setChannelId('');
       load();
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   const handleDelete = async (id: string) => {
-    try { await integrationApi.deleteConnection(projectId, id); load(); } catch { /* empty */ }
+    if (!window.confirm('Delete this integration connection?')) return;
+    try { await integrationApi.deleteConnection(projectId, id); load(); } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   const handleTest = async (id: string) => {
@@ -129,7 +142,7 @@ function ConnectionsTab({ projectId }: { projectId: string }) {
     try {
       await integrationApi.updateConnection(projectId, conn.id, { enabled: !conn.enabled });
       load();
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   return (
@@ -237,14 +250,26 @@ function RulesTab({ projectId }: { projectId: string }) {
   const [channel, setChannel] = useState('in_app');
   const [severity, setSeverity] = useState('info');
 
-  useEffect(() => { load(); }, [projectId]);
+  useEffect(() => {
+    let cancelled = false;
+    const doLoad = async () => {
+      setLoading(true);
+      try {
+        const res = await integrationApi.listRules(projectId);
+        if (!cancelled) setRules(res.data.rules || []);
+      } catch (err) { console.error(err); }
+      if (!cancelled) setLoading(false);
+    };
+    doLoad();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   const load = async () => {
     setLoading(true);
     try {
       const res = await integrationApi.listRules(projectId);
       setRules(res.data.rules || []);
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); }
     setLoading(false);
   };
 
@@ -254,18 +279,19 @@ function RulesTab({ projectId }: { projectId: string }) {
       await integrationApi.createRule({ project_id: projectId, event_type: eventType, channel, min_severity: severity });
       setShowCreate(false);
       load();
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   const toggleRule = async (rule: NotificationRule) => {
     try {
       await integrationApi.updateRule(rule.id, { enabled: !rule.enabled });
       load();
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   const handleDelete = async (id: string) => {
-    try { await integrationApi.deleteRule(id); load(); } catch { /* empty */ }
+    if (!window.confirm('Delete this notification rule?')) return;
+    try { await integrationApi.deleteRule(id); load(); } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   return (
@@ -375,14 +401,26 @@ function DigestsTab() {
   const [includeAgent, setIncludeAgent] = useState(true);
   const [includeMonitoring, setIncludeMonitoring] = useState(true);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const doLoad = async () => {
+      setLoading(true);
+      try {
+        const res = await integrationApi.listDigests();
+        if (!cancelled) setDigests(res.data.digests || []);
+      } catch (err) { console.error(err); }
+      if (!cancelled) setLoading(false);
+    };
+    doLoad();
+    return () => { cancelled = true; };
+  }, []);
 
   const load = async () => {
     setLoading(true);
     try {
       const res = await integrationApi.listDigests();
       setDigests(res.data.digests || []);
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); }
     setLoading(false);
   };
 
@@ -400,11 +438,12 @@ function DigestsTab() {
       });
       setShowCreate(false);
       load();
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   const handleDelete = async (id: string) => {
-    try { await integrationApi.deleteDigest(id); load(); } catch { /* empty */ }
+    if (!window.confirm('Delete this email digest?')) return;
+    try { await integrationApi.deleteDigest(id); load(); } catch (err) { console.error(err); alert('An error occurred. Please try again.'); }
   };
 
   return (
@@ -507,14 +546,26 @@ function EventsTab({ projectId }: { projectId: string }) {
   const [events, setEvents] = useState<OutboundEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { load(); }, [projectId]);
+  useEffect(() => {
+    let cancelled = false;
+    const doLoad = async () => {
+      setLoading(true);
+      try {
+        const res = await integrationApi.listEvents(projectId);
+        if (!cancelled) setEvents(res.data.events || []);
+      } catch (err) { console.error(err); }
+      if (!cancelled) setLoading(false);
+    };
+    doLoad();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   const load = async () => {
     setLoading(true);
     try {
       const res = await integrationApi.listEvents(projectId);
       setEvents(res.data.events || []);
-    } catch { /* empty */ }
+    } catch (err) { console.error(err); }
     setLoading(false);
   };
 

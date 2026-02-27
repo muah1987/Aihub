@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Plus, Check, Trash2, Eye } from 'lucide-react';
 import { platformApi, type PromptVersion } from '../../api/platform';
 
@@ -15,20 +15,28 @@ export function PromptVersions({ projectId, agentId }: PromptVersionsProps) {
   const [prompt, setPrompt] = useState('');
   const [viewPrompt, setViewPrompt] = useState<string | null>(null);
 
-  const fetchVersions = async () => {
+  const fetchVersions = useCallback(async (signal?: AbortSignal) => {
     try {
       const res = await platformApi.listPromptVersions(projectId, agentId);
-      setVersions(res.data.versions || []);
-    } catch {
-      // silent
+      if (!signal?.aborted) {
+        setVersions(res.data.versions || []);
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        console.error(err);
+      }
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
-  };
+  }, [projectId, agentId]);
 
   useEffect(() => {
-    fetchVersions();
-  }, [projectId, agentId]);
+    const controller = new AbortController();
+    fetchVersions(controller.signal);
+    return () => controller.abort();
+  }, [fetchVersions]);
 
   const handleCreate = async () => {
     if (!label.trim() || !prompt.trim()) return;
@@ -41,26 +49,31 @@ export function PromptVersions({ projectId, agentId }: PromptVersionsProps) {
       setPrompt('');
       setShowCreate(false);
       fetchVersions();
-    } catch {
-      // silent
+    } catch (err) {
+      console.error(err);
+      alert('Failed to create version.');
     }
   };
 
   const handleActivate = async (versionId: string) => {
+    if (!window.confirm('Activate this version? It will replace the current active prompt.')) return;
     try {
       await platformApi.activatePromptVersion(projectId, agentId, versionId);
       fetchVersions();
-    } catch {
-      // silent
+    } catch (err) {
+      console.error(err);
+      alert('Failed to activate version.');
     }
   };
 
   const handleDelete = async (versionId: string) => {
+    if (!window.confirm('Delete this prompt version?')) return;
     try {
       await platformApi.deletePromptVersion(projectId, agentId, versionId);
       setVersions((prev) => prev.filter((v) => v.id !== versionId));
-    } catch {
-      // silent
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete version.');
     }
   };
 

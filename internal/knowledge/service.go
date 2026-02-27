@@ -83,10 +83,12 @@ func (s *Service) CreateDocument(projectID uuid.UUID, userID *uuid.UUID, input *
 
 	doc.ChunkCount = len(dbChunks)
 	doc.Status = "ready"
-	s.db.Model(doc).Updates(map[string]interface{}{
+	if err := s.db.Model(doc).Updates(map[string]interface{}{
 		"status":      "ready",
 		"chunk_count": len(dbChunks),
-	})
+	}).Error; err != nil {
+		return doc, fmt.Errorf("failed to update document status: %w", err)
+	}
 
 	return doc, nil
 }
@@ -111,10 +113,13 @@ func (s *Service) ListDocuments(projectID uuid.UUID) ([]models.KnowledgeDocument
 
 func (s *Service) DeleteDocument(projectID, docID uuid.UUID) error {
 	result := s.db.Where("id = ? AND project_id = ?", docID, projectID).Delete(&models.KnowledgeDocument{})
+	if result.Error != nil {
+		return result.Error
+	}
 	if result.RowsAffected == 0 {
 		return ErrDocumentNotFound
 	}
-	return result.Error
+	return nil
 }
 
 // ---- Chunk retrieval ----
@@ -131,10 +136,13 @@ func (s *Service) SearchChunks(projectID uuid.UUID, query string, limit int) ([]
 		limit = 20
 	}
 	var chunks []models.DocumentChunk
-	err := s.db.Where("project_id = ? AND to_tsvector('english', content) @@ plainto_tsquery('english', ?)", projectID, query).
-		Order("ts_rank(to_tsvector('english', content), plainto_tsquery('english', '" + sanitizeQuery(query) + "')) DESC").
-		Limit(limit).
-		Find(&chunks).Error
+	err := s.db.Raw(
+		`SELECT * FROM document_chunks
+		 WHERE project_id = ? AND to_tsvector('english', content) @@ plainto_tsquery('english', ?)
+		 ORDER BY ts_rank(to_tsvector('english', content), plainto_tsquery('english', ?)) DESC
+		 LIMIT ?`,
+		projectID, query, query, limit,
+	).Scan(&chunks).Error
 	return chunks, err
 }
 
@@ -144,6 +152,9 @@ func chunkText(text string, chunkSize, overlap int) []string {
 	words := strings.Fields(text)
 	if len(words) == 0 {
 		return nil
+	}
+	if overlap >= chunkSize {
+		overlap = chunkSize - 1
 	}
 	if len(words) <= chunkSize {
 		return []string{text}
@@ -167,12 +178,8 @@ func chunkText(text string, chunkSize, overlap int) []string {
 }
 
 func estimateTokens(text string) int {
-	// Rough estimate: ~0.75 tokens per word for English
+	// Rough estimate: ~1.3 tokens per word for English
 	words := len(strings.Fields(text))
 	return int(float64(words) * 1.33)
 }
 
-func sanitizeQuery(q string) string {
-	// Remove single quotes to prevent SQL issues in ts_rank
-	return strings.ReplaceAll(q, "'", "")
-}
