@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/muah1987/Aihub/internal/agent"
+	"github.com/muah1987/Aihub/internal/analytics"
 	"github.com/muah1987/Aihub/internal/auth"
 	"github.com/muah1987/Aihub/internal/chat"
 	"github.com/muah1987/Aihub/internal/config"
@@ -28,6 +29,7 @@ import (
 	"github.com/muah1987/Aihub/internal/router"
 	"github.com/muah1987/Aihub/internal/team"
 	"github.com/muah1987/Aihub/internal/terminal"
+	"github.com/muah1987/Aihub/internal/tools"
 	"github.com/muah1987/Aihub/internal/webhook"
 )
 
@@ -105,6 +107,12 @@ func main() {
 	webhookService := webhook.NewService(db)
 	monitoringService := monitoring.NewService(db, deploymentService)
 
+	// Phase 5
+	toolsService := tools.NewService(db)
+	analyticsService := analytics.NewService(db)
+	agentService.SetUsageRecorder(analyticsService)
+	agentService.SetToolProvider(toolsService)
+
 	// Handlers
 	handlers := &router.Handlers{
 		Auth:         auth.NewHandler(authService),
@@ -119,6 +127,8 @@ func main() {
 		Webhook:      webhook.NewHandler(webhookService, deploymentService, notifyService),
 		Monitoring:   monitoring.NewHandler(monitoringService),
 		Notification: notification.NewHandler(notifyService, notifyHub),
+		Tools:        tools.NewHandler(toolsService),
+		Analytics:    analytics.NewHandler(analyticsService),
 	}
 
 	if terminalService != nil {

@@ -9,6 +9,8 @@ import { TeamPanel } from '../team/TeamPanel';
 import { ProjectSettings } from './ProjectSettings';
 import { DevOpsPanel } from '../devops/DevOpsPanel';
 import { LogsPanel } from '../log-viewer/LogsPanel';
+import { ToolsPanel } from '../tools/ToolsPanel';
+import { AnalyticsPanel } from '../analytics/AnalyticsPanel';
 import { ArrowLeft } from 'lucide-react';
 
 interface ProjectDashboardProps {
@@ -31,6 +33,10 @@ export function ProjectDashboard({ project, onBack }: ProjectDashboardProps) {
         return <TeamPanel projectId={project.id} />;
       case 'memory':
         return <MemoryPanel projectId={project.id} />;
+      case 'tools':
+        return <ToolsPanel projectId={project.id} />;
+      case 'analytics':
+        return <AnalyticsPanel projectId={project.id} />;
       case 'devops':
         return <DevOpsPanel projectId={project.id} />;
       case 'logs':
@@ -59,7 +65,7 @@ export function ProjectDashboard({ project, onBack }: ProjectDashboardProps) {
 
         {/* Desktop tab bar */}
         <div className="hidden sm:flex border-b border-[var(--color-border)] px-4 overflow-x-auto">
-          {['chat', 'cli', 'agents', 'teams', 'memory', 'devops', 'logs', 'settings'].map((tab) => (
+          {['chat', 'cli', 'agents', 'teams', 'memory', 'tools', 'analytics', 'devops', 'logs', 'settings'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}

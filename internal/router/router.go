@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/muah1987/Aihub/internal/agent"
+	"github.com/muah1987/Aihub/internal/analytics"
 	"github.com/muah1987/Aihub/internal/auth"
 	"github.com/muah1987/Aihub/internal/chat"
 	"github.com/muah1987/Aihub/internal/deployment"
@@ -17,6 +18,7 @@ import (
 	"github.com/muah1987/Aihub/internal/provider"
 	"github.com/muah1987/Aihub/internal/team"
 	"github.com/muah1987/Aihub/internal/terminal"
+	"github.com/muah1987/Aihub/internal/tools"
 	"github.com/muah1987/Aihub/internal/webhook"
 )
 
@@ -34,6 +36,8 @@ type Handlers struct {
 	Webhook      *webhook.Handler
 	Monitoring   *monitoring.Handler
 	Notification *notification.Handler
+	Tools        *tools.Handler
+	Analytics    *analytics.Handler
 }
 
 func New(
@@ -145,7 +149,38 @@ func New(
 						r.Put("/{agentId}", handlers.Agent.Update)
 						r.Delete("/{agentId}", handlers.Agent.Delete)
 						r.Post("/{agentId}/invoke", handlers.Agent.Invoke)
+
+						// Agent tool bindings
+						if handlers.Tools != nil {
+							r.Get("/{agentId}/tools", handlers.Tools.ListBindings)
+							r.Post("/{agentId}/tools", handlers.Tools.BindTool)
+							r.Delete("/{agentId}/tools/{toolId}", handlers.Tools.UnbindTool)
+							r.Post("/{agentId}/tools/{toolId}/execute", handlers.Tools.ExecuteTool)
+						}
 					})
+
+					// Project-level tools
+					if handlers.Tools != nil {
+						r.Route("/tools", func(r chi.Router) {
+							r.Get("/", handlers.Tools.ListTools)
+							r.Post("/", handlers.Tools.CreateTool)
+							r.Put("/{toolId}", handlers.Tools.UpdateTool)
+							r.Delete("/{toolId}", handlers.Tools.DeleteTool)
+							r.Get("/executions", handlers.Tools.ListExecutions)
+						})
+					}
+
+					// Analytics
+					if handlers.Analytics != nil {
+						r.Route("/analytics", func(r chi.Router) {
+							r.Get("/summary", handlers.Analytics.Summary)
+							r.Get("/daily", handlers.Analytics.Daily)
+							r.Get("/models", handlers.Analytics.Models)
+							r.Get("/recent", handlers.Analytics.Recent)
+							r.Get("/budget", handlers.Analytics.GetBudget)
+							r.Post("/budget", handlers.Analytics.SetBudget)
+						})
+					}
 
 					// Terminal sessions
 					r.Route("/terminal", func(r chi.Router) {

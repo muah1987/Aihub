@@ -1,11 +1,11 @@
 package agent
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
-
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/muah1987/Aihub/internal/chat"
@@ -14,6 +14,17 @@ import (
 	"github.com/muah1987/Aihub/internal/provider"
 	"gorm.io/gorm"
 )
+
+// UsageRecorder is satisfied by analytics.Service.
+type UsageRecorder interface {
+	Record(userID, projectID uuid.UUID, agentID *uuid.UUID, providerName, model string, inputTokens, outputTokens, toolCalls int) (*models.UsageRecord, error)
+}
+
+// ToolProvider is satisfied by tools.Service.
+type ToolProvider interface {
+	GetAgentTools(agentID uuid.UUID) ([]models.AgentTool, error)
+	Execute(agentID, toolID, projectID uuid.UUID, userID *uuid.UUID, inputData json.RawMessage) (*models.ToolExecution, error)
+}
 
 var (
 	ErrAgentNotFound = errors.New("agent not found")
@@ -47,6 +58,8 @@ type Service struct {
 	providerService *provider.Service
 	chatService     *chat.Service
 	memoryService   *memory.Service
+	usageRecorder   UsageRecorder
+	toolProvider    ToolProvider
 }
 
 func NewService(db *gorm.DB, providerService *provider.Service, chatService *chat.Service, memoryService *memory.Service) *Service {
@@ -57,6 +70,12 @@ func NewService(db *gorm.DB, providerService *provider.Service, chatService *cha
 		memoryService:   memoryService,
 	}
 }
+
+// SetUsageRecorder wires the analytics service (avoids import cycle).
+func (s *Service) SetUsageRecorder(ur UsageRecorder) { s.usageRecorder = ur }
+
+// SetToolProvider wires the tools service (avoids import cycle).
+func (s *Service) SetToolProvider(tp ToolProvider) { s.toolProvider = tp }
 
 func (s *Service) Create(projectID uuid.UUID, input *CreateInput) (*models.Agent, error) {
 	connID, err := uuid.Parse(input.ProviderConnectionID)
@@ -210,6 +229,21 @@ func (s *Service) Invoke(userID, projectID, agentID uuid.UUID, input *InvokeInpu
 		}
 	}
 
+	// Inject tool descriptions into the system prompt so the model knows what's available
+	var toolCount int
+	if s.toolProvider != nil {
+		agentTools, _ := s.toolProvider.GetAgentTools(agentID)
+		if len(agentTools) > 0 {
+			toolCount = len(agentTools)
+			var tb strings.Builder
+			tb.WriteString("\n\n## Available Tools\nYou have the following tools available. To use a tool, include a JSON block in your response with the format: ```tool\n{\"tool\": \"<name>\", \"input\": {<params>}}\n```\n\n")
+			for _, t := range agentTools {
+				tb.WriteString(fmt.Sprintf("### %s (%s)\n%s\nDefinition: %s\n\n", t.Name, t.ToolType, t.Description, string(t.Definition)))
+			}
+			systemContent += tb.String()
+		}
+	}
+
 	messages := []CompletionMsg{}
 	if systemContent != "" {
 		messages = append(messages, CompletionMsg{
@@ -241,6 +275,11 @@ func (s *Service) Invoke(userID, projectID, agentID uuid.UUID, input *InvokeInpu
 		"token_usage_total": gorm.Expr("token_usage_total + ?", totalTokens),
 		"last_heartbeat":    time.Now(),
 	})
+
+	// Record analytics
+	if s.usageRecorder != nil {
+		s.usageRecorder.Record(userID, projectID, &agentID, conn.ProviderType, agent.Model, completion.InputTokens, completion.OutputTokens, toolCount)
+	}
 
 	// Post agent response to project chat
 	msg, err := s.chatService.SendMessage(
