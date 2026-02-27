@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/muah1987/Aihub/internal/activity"
 	"github.com/muah1987/Aihub/internal/agent"
+	"github.com/muah1987/Aihub/internal/compliance"
 	"github.com/muah1987/Aihub/internal/integration"
 	"github.com/muah1987/Aihub/internal/knowledge"
 	"github.com/muah1987/Aihub/internal/analytics"
@@ -48,6 +49,7 @@ type Handlers struct {
 	Activity     *activity.Handler
 	Knowledge    *knowledge.Handler
 	Integration  *integration.Handler
+	Compliance   *compliance.Handler
 }
 
 func New(
@@ -153,6 +155,24 @@ func New(
 						if handlers.Knowledge != nil {
 							r.Get("/shared-memories", handlers.Knowledge.ListSharedMemories)
 							r.Delete("/shared-memories/{sharedId}", handlers.Knowledge.UnshareMemory)
+						}
+
+						// Compliance: custom roles, permissions, org audit (Phase 9)
+						if handlers.Compliance != nil {
+							r.Get("/audit-logs", handlers.Compliance.ListOrgAuditLogs)
+
+							r.Route("/roles", func(r chi.Router) {
+								r.Get("/", handlers.Compliance.ListRoles)
+								r.Post("/", handlers.Compliance.CreateRole)
+								r.Put("/{roleId}", handlers.Compliance.UpdateRole)
+								r.Delete("/{roleId}", handlers.Compliance.DeleteRole)
+							})
+
+							r.Route("/permissions", func(r chi.Router) {
+								r.Get("/", handlers.Compliance.ListPermissions)
+								r.Post("/", handlers.Compliance.GrantPermission)
+								r.Delete("/{permId}", handlers.Compliance.RevokePermission)
+							})
 						}
 					})
 				})
@@ -332,6 +352,24 @@ func New(
 					// Activity log
 					if handlers.Activity != nil {
 						r.Get("/activity", handlers.Activity.List)
+					}
+
+					// Compliance (Phase 9)
+					if handlers.Compliance != nil {
+						r.Get("/audit-logs", handlers.Compliance.ListAuditLogs)
+
+						r.Route("/exports", func(r chi.Router) {
+							r.Get("/", handlers.Compliance.ListExports)
+							r.Post("/", handlers.Compliance.CreateExport)
+							r.Get("/{exportId}/download", handlers.Compliance.DownloadExport)
+							r.Delete("/{exportId}", handlers.Compliance.DeleteExport)
+						})
+
+						r.Route("/retention", func(r chi.Router) {
+							r.Get("/", handlers.Compliance.ListRetentionPolicies)
+							r.Post("/", handlers.Compliance.UpsertRetentionPolicy)
+							r.Delete("/{policyId}", handlers.Compliance.DeleteRetentionPolicy)
+						})
 					}
 
 					// Integrations (Phase 8)

@@ -16,6 +16,7 @@ import { SchedulerPanel } from '../scheduler/SchedulerPanel';
 import { ActivityPanel } from '../activity/ActivityPanel';
 import { KnowledgePanel } from '../knowledge/KnowledgePanel';
 import { IntegrationsPanel } from '../integrations/IntegrationsPanel';
+import { CompliancePanel } from '../compliance/CompliancePanel';
 import { ArrowLeft } from 'lucide-react';
 
 interface ProjectDashboardProps {
@@ -52,6 +53,8 @@ export function ProjectDashboard({ project, onBack }: ProjectDashboardProps) {
         return <KnowledgePanel projectId={project.id} />;
       case 'integrations':
         return <IntegrationsPanel projectId={project.id} />;
+      case 'compliance':
+        return <CompliancePanel projectId={project.id} />;
       case 'devops':
         return <DevOpsPanel projectId={project.id} />;
       case 'logs':
@@ -80,7 +83,7 @@ export function ProjectDashboard({ project, onBack }: ProjectDashboardProps) {
 
         {/* Desktop tab bar */}
         <div className="hidden sm:flex border-b border-[var(--color-border)] px-4 overflow-x-auto">
-          {['chat', 'cli', 'agents', 'teams', 'memory', 'tools', 'analytics', 'workflows', 'schedules', 'activity', 'knowledge', 'integrations', 'devops', 'logs', 'settings'].map((tab) => (
+          {['chat', 'cli', 'agents', 'teams', 'memory', 'tools', 'analytics', 'workflows', 'schedules', 'activity', 'knowledge', 'integrations', 'compliance', 'devops', 'logs', 'settings'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}

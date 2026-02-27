@@ -13,6 +13,7 @@ import (
 
 	"github.com/muah1987/Aihub/internal/activity"
 	"github.com/muah1987/Aihub/internal/agent"
+	"github.com/muah1987/Aihub/internal/compliance"
 	"github.com/muah1987/Aihub/internal/integration"
 	"github.com/muah1987/Aihub/internal/knowledge"
 	"github.com/muah1987/Aihub/internal/analytics"
@@ -129,6 +130,12 @@ func main() {
 	// Phase 8
 	integrationService := integration.NewService(db)
 
+	// Phase 9
+	auditService := compliance.NewAuditService(db)
+	exportService := compliance.NewExportService(db)
+	roleService := compliance.NewRoleService(db)
+	retentionService := compliance.NewRetentionService(db)
+
 	// Handlers
 	handlers := &router.Handlers{
 		Auth:         auth.NewHandler(authService),
@@ -150,6 +157,7 @@ func main() {
 		Activity:     activity.NewHandler(activityService),
 		Knowledge:    knowledge.NewHandler(knowledgeService),
 		Integration:  integration.NewHandler(integrationService),
+		Compliance:   compliance.NewHandler(auditService, exportService, roleService, retentionService),
 	}
 
 	if terminalService != nil {
