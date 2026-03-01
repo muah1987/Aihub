@@ -272,25 +272,54 @@ func (s *Service) Setup2FA(userID uuid.UUID) (secret, qrURL string, backupCodes 
 
 	qrURL = s.totp.GenerateQRURL(user.Email, secret)
 
-	// Store the secret temporarily (not enabled yet until confirmed)
-	s.db.Model(&user).Update("two_factor_secret", secret)
-
-	// Generate backup codes
+	// Generate backup codes before opening the transaction so we can return
+	// them even if no DB writes have occurred yet.
 	backupCodes = make([]string, 10)
 	for i := range backupCodes {
 		codeBytes := make([]byte, 4)
-		rand.Read(codeBytes)
+		if _, err := rand.Read(codeBytes); err != nil {
+			return "", "", nil, fmt.Errorf("failed to generate backup code: %w", err)
+		}
 		backupCodes[i] = hex.EncodeToString(codeBytes)
 	}
 
+	// Hash all backup codes before opening the transaction.
+	hashes := make([]string, len(backupCodes))
+	for i, code := range backupCodes {
+		hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+		if err != nil {
+			return "", "", nil, fmt.Errorf("failed to hash backup code: %w", err)
+		}
+		hashes[i] = string(hash)
+	}
+
+	// Persist secret and backup codes atomically.
+	tx := s.db.Begin()
+	if tx.Error != nil {
+		return "", "", nil, fmt.Errorf("failed to begin transaction: %w", tx.Error)
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op after Commit; original error takes precedence
+
+	// Store the secret temporarily (not enabled yet until confirmed)
+	if err := tx.Model(&user).Update("two_factor_secret", secret).Error; err != nil {
+		return "", "", nil, fmt.Errorf("failed to save 2FA secret: %w", err)
+	}
+
 	// Delete old backup codes and store new ones
-	s.db.Where("user_id = ?", userID).Delete(&models.TwoFactorBackupCode{})
-	for _, code := range backupCodes {
-		hash, _ := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
-		s.db.Create(&models.TwoFactorBackupCode{
+	if err := tx.Where("user_id = ?", userID).Delete(&models.TwoFactorBackupCode{}).Error; err != nil {
+		return "", "", nil, fmt.Errorf("failed to delete old backup codes: %w", err)
+	}
+	for _, h := range hashes {
+		if err := tx.Create(&models.TwoFactorBackupCode{
 			UserID:   userID,
-			CodeHash: string(hash),
-		})
+			CodeHash: h,
+		}).Error; err != nil {
+			return "", "", nil, fmt.Errorf("failed to save backup code: %w", err)
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return "", "", nil, fmt.Errorf("failed to commit 2FA setup: %w", err)
 	}
 
 	return secret, qrURL, backupCodes, nil

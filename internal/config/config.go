@@ -72,7 +72,7 @@ func Load() *Config {
 			RefreshTokenTTL: parseDuration(getEnv("JWT_REFRESH_TOKEN_TTL", "168h")),
 		},
 		Encryption: EncryptionConfig{
-			Key: getEnv("ENCRYPTION_KEY", "0123456789abcdef0123456789abcdef"),
+			Key: getEnv("ENCRYPTION_KEY", ""),
 		},
 		CORS: CORSConfig{
 			AllowedOrigins: getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173"),

@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,21 +37,25 @@ type Service struct {
 	encryptionKey []byte
 }
 
-func NewService(db *gorm.DB, encryptionKey string) *Service {
+func NewService(db *gorm.DB, encryptionKeyHex string) (*Service, error) {
+	key, err := hex.DecodeString(encryptionKeyHex)
+	if err != nil {
+		return nil, fmt.Errorf("invalid encryption key: must be a hex-encoded string: %w", err)
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("invalid encryption key: decoded length must be 32 bytes, got %d", len(key))
+	}
 	return &Service{
 		db:            db,
-		encryptionKey: []byte(encryptionKey),
+		encryptionKey: key,
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
 		},
-	}
+	}, nil
 }
 
 // encrypt encrypts plaintext using AES-GCM with the service encryption key.
 func (s *Service) encrypt(plaintext string) (string, error) {
-	if len(s.encryptionKey) == 0 {
-		return plaintext, nil
-	}
 	block, err := aes.NewCipher(s.encryptionKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to create cipher: %w", err)
@@ -69,9 +74,6 @@ func (s *Service) encrypt(plaintext string) (string, error) {
 
 // decrypt decrypts base64-encoded AES-GCM ciphertext.
 func (s *Service) decrypt(encoded string) (string, error) {
-	if len(s.encryptionKey) == 0 {
-		return encoded, nil
-	}
 	data, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return encoded, nil // not encrypted (legacy data), return as-is

@@ -33,9 +33,11 @@ type Service struct {
 
 func NewService(db *gorm.DB, encryptionKeyHex string) (*Service, error) {
 	key, err := hex.DecodeString(encryptionKeyHex)
-	if err != nil || len(key) != 32 {
-		key = make([]byte, 32)
-		copy(key, []byte(encryptionKeyHex))
+	if err != nil {
+		return nil, fmt.Errorf("invalid encryption key: must be a hex-encoded string: %w", err)
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("invalid encryption key: decoded length must be 32 bytes, got %d", len(key))
 	}
 	return &Service{db: db, key: key}, nil
 }
@@ -218,11 +220,17 @@ func (s *Service) UpdateTarget(projectID, targetID uuid.UUID, input *TargetInput
 		updates["port"] = 22
 	}
 	if input.SSHKey != "" {
-		enc, _ := s.encrypt(input.SSHKey)
+		enc, err := s.encrypt(input.SSHKey)
+		if err != nil {
+			return nil, fmt.Errorf("encrypt ssh key: %w", err)
+		}
 		updates["ssh_key"] = enc
 	}
 	if input.SSHPassword != "" {
-		enc, _ := s.encrypt(input.SSHPassword)
+		enc, err := s.encrypt(input.SSHPassword)
+		if err != nil {
+			return nil, fmt.Errorf("encrypt ssh password: %w", err)
+		}
 		updates["ssh_password"] = enc
 	}
 

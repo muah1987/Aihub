@@ -129,7 +129,10 @@ func main() {
 	knowledgeService := knowledge.NewService(db)
 
 	// Phase 8
-	integrationService := integration.NewService(db, cfg.Encryption.Key)
+	integrationService, err := integration.NewService(db, cfg.Encryption.Key)
+	if err != nil {
+		log.Fatalf("Failed to initialize integration service: %v", err)
+	}
 
 	// Phase 10
 	platformService := platform.NewService(db)
@@ -173,11 +176,12 @@ func main() {
 
 	addr := fmt.Sprintf("%s:%s", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      handler,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go func() {
