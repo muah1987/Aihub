@@ -42,3 +42,8 @@ web/.vite/
 
 # Compiled
 tmp/
+
+# AI Agent Development Files (excluded from builds, kept in Git for agent workflows)
+# These folders are used by AI agents for self-improvement and are excluded from
+# Docker builds via .dockerignore. They should remain tracked in Git.
+# See .dockerignore for build exclusions.

@@ -1,0 +1,33 @@
+# Git and GitHub
+.git
+.github/changelogs/
+.github/memory/
+.github/spec/
+.github/copilot-instructions.md
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / React (handled by Dockerfile.web COPY)
+web/node_modules/
+
+# Documentation (not needed in runtime images)
+docs/
+README.md
+
+# Build artifacts
+bin/
+tmp/
+*.log
