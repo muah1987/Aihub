@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -187,7 +188,9 @@ func (h *Handler) GitHubIncoming(w http.ResponseWriter, r *http.Request) {
 	// Trigger deployment if target is configured
 	if wh.VPSTargetID != nil && h.deploySvc != nil {
 		go func() {
-			_, _ = h.deploySvc.Deploy(wh.ProjectID, *wh.VPSTargetID, nil)
+			if _, err := h.deploySvc.Deploy(wh.ProjectID, *wh.VPSTargetID, nil); err != nil {
+				log.Printf("webhook auto-deploy failed for project %s target %s: %v", wh.ProjectID, *wh.VPSTargetID, err)
+			}
 		}()
 
 		// Send in-app notification to project owner

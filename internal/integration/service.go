@@ -416,7 +416,11 @@ func (s *Service) RetryFailedEvents() (int, error) {
 		}
 
 		var payload map[string]interface{}
-		json.Unmarshal(events[i].Payload, &payload)
+		if err := json.Unmarshal(events[i].Payload, &payload); err != nil {
+			events[i].Status = "failed"
+			s.db.Save(&events[i])
+			continue
+		}
 
 		events[i].Attempts++
 		if err := s.SendToIntegration(&conn, events[i].EventType, payload); err != nil {
@@ -645,7 +649,10 @@ func (s *Service) postJSON(targetURL string, body interface{}) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if err != nil {
+		return "error", fmt.Errorf("failed to read response body: %w", err)
+	}
 
 	if resp.StatusCode >= 400 {
 		return "error", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
@@ -664,7 +671,10 @@ func formatPayloadText(payload map[string]interface{}) string {
 	if msg, ok := payload["message"].(string); ok {
 		return msg
 	}
-	data, _ := json.Marshal(payload)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Sprintf("(payload marshal error: %v)", err)
+	}
 	if len(data) > 200 {
 		return string(data[:200]) + "..."
 	}

@@ -123,7 +123,15 @@ func (h *Handler) Validate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, _ := h.service.GetByID(userID, connID)
+	conn, err := h.service.GetByID(userID, connID)
+	if err != nil {
+		if errors.Is(err, ErrProviderNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "provider connection not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to retrieve provider connection"})
+		return
+	}
 
 	switch conn.ProviderType {
 	case "github":
@@ -140,8 +148,10 @@ func (h *Handler) Validate(w http.ResponseWriter, r *http.Request) {
 		})
 	default:
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"valid":   true,
-			"message": "token stored (validation not implemented for this provider)",
+			"valid":     false,
+			"provider":  conn.ProviderType,
+			"message":   "token stored but validation is not yet supported for this provider",
+			"token_set": token != "",
 		})
 	}
 }

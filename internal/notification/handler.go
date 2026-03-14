@@ -44,7 +44,11 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-	count, _ := h.service.CountUnread(userID)
+	count, err := h.service.CountUnread(userID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to count unread notifications"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"notifications": ns,
 		"unread_count":  count,
@@ -121,7 +125,9 @@ func (h *Handler) WebSocket(w http.ResponseWriter, r *http.Request) {
 
 	// Send unread count immediately on connect
 	count, _ := h.service.CountUnread(userID)
-	conn.WriteJSON(map[string]interface{}{"event": "connected", "unread_count": count})
+	if err := conn.WriteJSON(map[string]interface{}{"event": "connected", "unread_count": count}); err != nil {
+		return
+	}
 
 	// Keep connection alive; client sends pings
 	for {
